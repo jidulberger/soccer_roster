@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useMemo, useCallback, useEffect } from "react";
+import { Fragment, useState, useMemo, useCallback, useEffect } from "react";
 import {
   INITIAL_PLAYERS, ALL_GRADES, GRADE_VAL, GRADE_COLORS, POS_COLORS,
   generateRotation,
@@ -17,7 +17,6 @@ export default function SoccerRotation() {
   const [activeGame, setActiveGame] = useState(0);
   const [loaded, setLoaded] = useState(false);
 
-  // Load shared state from API on mount
   useEffect(() => {
     fetch('/api/state')
       .then(r => r.json())
@@ -33,7 +32,6 @@ export default function SoccerRotation() {
       .finally(() => setLoaded(true));
   }, []);
 
-  // Auto-save to shared API 500ms after any change
   useEffect(() => {
     if (!loaded) return;
     const timer = setTimeout(() => {
@@ -76,7 +74,6 @@ export default function SoccerRotation() {
       const list = [...(prev[gameIdx] || [])];
       const idx = list.indexOf(playerName);
       if (idx >= 0) {
-        // Restoring player — clear any per-shift exclusions for this game too
         setShiftExclusions(prevSE => {
           const nse = { ...prevSE };
           for (let s = 0; s < 8; s++) {
@@ -136,9 +133,9 @@ export default function SoccerRotation() {
     });
   }, [games]);
 
-  const isGameExcluded = (gi, name) => (gameExclusions[gi] || []).includes(name);
+  const isGameExcluded  = (gi, name) => (gameExclusions[gi] || []).includes(name);
   const isShiftExcluded = (gi, si, name) => (shiftExclusions[`${gi}-${si}`] || []).includes(name);
-  const isShiftForced = (gi, si, name) => (shiftForceIns[`${gi}-${si}`] || []).includes(name);
+  const isShiftForced   = (gi, si, name) => (shiftForceIns[`${gi}-${si}`] || []).includes(name);
 
   const exCount = (gi) => {
     const ge = (gameExclusions[gi] || []).length;
@@ -159,29 +156,37 @@ export default function SoccerRotation() {
     Object.keys(shiftForceIns).length > 0 ||
     Object.keys(lockedShifts).length > 0;
 
+  // ── Styles ──
   const S = {
     root: { fontFamily: "'DM Sans', 'Helvetica Neue', sans-serif", padding: "16px", maxWidth: "920px", margin: "0 auto", color: "#1a1a2e" },
     tabs: { display: "flex", gap: "6px", marginBottom: "12px" },
     tab: (on) => ({ flex: 1, padding: "9px 0", border: on ? "2px solid #1a1a2e" : "2px solid #e5e7eb", borderRadius: "8px",
       background: on ? "#1a1a2e" : "#fff", color: on ? "#fff" : "#1a1a2e", fontFamily: "'DM Sans'", fontWeight: 600, fontSize: "13px", cursor: "pointer" }),
-    grid: { background: "#fff", borderRadius: "12px", border: "1px solid #e5e7eb", overflow: "hidden", marginBottom: "16px" },
-    row: (alt) => ({ display: "grid", gridTemplateColumns: "82px repeat(8, minmax(0, 1fr))", background: alt ? "#fafbfc" : "#fff" }),
-    hdrCell: (s) => ({ padding: "8px 4px", fontSize: "10px", fontWeight: 600, color: "#999", textAlign: "center",
-      textTransform: "uppercase", letterSpacing: "0.5px", boxShadow: s === 5 ? "inset 3px 0 0 #1a1a2e" : "none" }),
-    posCell: (s) => ({ padding: "4px 2px", display: "flex", alignItems: "center", justifyContent: "center",
-      overflow: "hidden", boxShadow: s === 4 ? "inset 3px 0 0 #1a1a2e" : "none" }),
+    // Single flat grid — all rows share one grid context so column widths are always identical
+    grid: { background: "#fff", borderRadius: "12px", border: "1px solid #e5e7eb", overflow: "hidden", marginBottom: "16px",
+      display: "grid", gridTemplateColumns: "82px repeat(8, minmax(0, 1fr))" },
     badge: (pos) => ({ background: POS_COLORS[pos]?.bg || "transparent", color: POS_COLORS[pos]?.text || "#ccc",
-      fontSize: "10px", fontFamily: "'DM Mono', monospace", fontWeight: 600, padding: "2px 8px", borderRadius: "4px",
-      cursor: "pointer", userSelect: "none", minWidth: "24px", textAlign: "center" }),
+      fontSize: "10px", fontFamily: "'DM Mono', monospace", fontWeight: 600, padding: "2px 6px", borderRadius: "4px",
+      cursor: "pointer", userSelect: "none", display: "block", textAlign: "center" }),
     xBadge: { background: "#fef2f2", color: "#991b1b", fontSize: "10px", fontFamily: "'DM Mono', monospace",
-      fontWeight: 600, padding: "2px 8px", borderRadius: "4px", cursor: "pointer", userSelect: "none",
-      border: "1px dashed #fca5a5", minWidth: "24px", textAlign: "center" },
-    sit: { fontSize: "10px", color: "#ddd", cursor: "default", padding: "2px 8px" },
-    nameBtn: (excluded) => ({ padding: "6px 8px", display: "flex", alignItems: "center", gap: "4px", cursor: "pointer",
-      userSelect: "none", background: excluded ? "#fef2f2" : "transparent", borderRadius: excluded ? "4px" : "0" }),
+      fontWeight: 600, padding: "2px 5px", borderRadius: "4px", cursor: "pointer", userSelect: "none",
+      border: "1px dashed #fca5a5", display: "block", textAlign: "center" },
     btn: (bg = "#1a1a2e") => ({ padding: "9px 18px", background: bg, color: "#fff", border: "none", borderRadius: "8px",
       fontFamily: "'DM Sans'", fontWeight: 600, fontSize: "12px", cursor: "pointer" }),
   };
+
+  // Shared cell style builders — halftime shadow on s===4 (0-based) keeps the line in a single CSS property
+  const htShadow = (s) => s === 4 ? "inset 3px 0 0 #1a1a2e" : "none";
+  const cHdr  = (s, extra = {}) => ({ padding: "8px 2px", fontSize: "10px", fontWeight: 600, color: "#999",
+    textAlign: "center", textTransform: "uppercase", letterSpacing: "0.5px",
+    background: "#fafafa", borderBottom: "2px solid #e5e7eb",
+    boxShadow: s === 5 ? "inset 3px 0 0 #1a1a2e" : "none", ...extra });
+  const cLock = (s, extra = {}) => ({ padding: "4px 2px", display: "flex", alignItems: "center", justifyContent: "center",
+    overflow: "hidden", background: "#f0fdf4", borderBottom: "1px solid #e5e7eb", boxShadow: htShadow(s), ...extra });
+  const cData = (s, bg, bdr, extra = {}) => ({ padding: "4px 2px", display: "flex", alignItems: "center", justifyContent: "center",
+    overflow: "hidden", background: bg, boxShadow: htShadow(s), ...bdr, ...extra });
+  const cAvg  = (s, extra = {}) => ({ padding: "4px 2px", display: "flex", alignItems: "center", justifyContent: "center",
+    overflow: "hidden", background: "#f8f7f4", borderTop: "2px solid #e5e7eb", boxShadow: htShadow(s), ...extra });
 
   if (!loaded) {
     return (
@@ -256,43 +261,61 @@ export default function SoccerRotation() {
         })}
       </div>
 
-      {/* Grid */}
+      {/* ── Grid: single flat CSS Grid so all rows share one column-width calculation ── */}
       <div style={S.grid}>
-        <div style={{ ...S.row(false), borderBottom: "2px solid #e5e7eb", background: "#fafafa" }}>
-          <div style={{ padding: "8px", fontSize: "10px", fontWeight: 600, color: "#999", textTransform: "uppercase" }}>Player</div>
-          {[1, 2, 3, 4, 5, 6, 7, 8].map(s => <div key={s} style={S.hdrCell(s)}>{s <= 4 ? `H1·${s}` : `H2·${s - 4}`}</div>)}
-        </div>
+
+        {/* Header row */}
+        <div style={{ padding: "8px", fontSize: "10px", fontWeight: 600, color: "#999", textTransform: "uppercase",
+          background: "#fafafa", borderBottom: "2px solid #e5e7eb" }}>Player</div>
+        {[1, 2, 3, 4, 5, 6, 7, 8].map(s => (
+          <div key={s} style={cHdr(s)}>{s <= 4 ? `H1·${s}` : `H2·${s - 4}`}</div>
+        ))}
 
         {/* Lock row */}
-        <div style={{ ...S.row(false), borderBottom: "1px solid #e5e7eb", background: "#f0fdf4" }}>
-          <div style={{ padding: "4px 8px", fontSize: "9px", fontWeight: 600, color: "#888" }}>Lock</div>
-          {[0, 1, 2, 3, 4, 5, 6, 7].map(s => {
-            const key = `${activeGame}-${s}`;
-            const isLocked = !!lockedShifts[key];
-            return <div key={s} style={{ ...S.posCell(s), cursor: "pointer" }} onClick={() => toggleLockShift(activeGame, s)}>
-              <span style={{ fontSize: "12px", userSelect: "none", opacity: isLocked ? 1 : 0.3 }}>{isLocked ? "🔒" : "🔓"}</span>
-            </div>;
-          })}
-        </div>
+        <div style={{ padding: "4px 8px", fontSize: "9px", fontWeight: 600, color: "#888",
+          background: "#f0fdf4", borderBottom: "1px solid #e5e7eb" }}>Lock</div>
+        {[0, 1, 2, 3, 4, 5, 6, 7].map(s => {
+          const lk = `${activeGame}-${s}`;
+          const isLocked = !!lockedShifts[lk];
+          return (
+            <div key={s} style={cLock(s, { cursor: "pointer" })} onClick={() => toggleLockShift(activeGame, s)}>
+              <span style={{ fontSize: "12px", userSelect: "none", opacity: isLocked ? 1 : 0.3 }}>
+                {isLocked ? "🔒" : "🔓"}
+              </span>
+            </div>
+          );
+        })}
 
+        {/* Player rows */}
         {players.map((player, pi) => {
           const g = activeGame;
           const gameEx = isGameExcluded(g, player.name);
+          const bg = pi % 2 !== 0 ? "#fafbfc" : "#fff";
+          const bdr = { borderBottom: pi < players.length - 1 ? "1px solid #f0f0f0" : "none" };
+
           return (
-            <div key={player.name} style={{ ...S.row(pi % 2 !== 0), borderBottom: pi < players.length - 1 ? "1px solid #f0f0f0" : "none" }}>
-              <div style={S.nameBtn(gameEx)} onClick={() => toggleGameExclusion(g, player.name)}>
-                <span style={{ fontSize: "12px", fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
-                  textDecoration: gameEx ? "line-through" : "none", color: gameEx ? "#991b1b" : "#1a1a2e" }}>
+            <Fragment key={player.name}>
+              {/* Name cell */}
+              <div style={{ padding: "6px 8px", display: "flex", alignItems: "center", cursor: "pointer",
+                userSelect: "none", background: gameEx ? "#fef2f2" : bg, ...bdr }}
+                onClick={() => toggleGameExclusion(g, player.name)}>
+                <span style={{ fontSize: "12px", fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis",
+                  whiteSpace: "nowrap", textDecoration: gameEx ? "line-through" : "none",
+                  color: gameEx ? "#991b1b" : "#1a1a2e" }}>
                   {player.name}
                 </span>
               </div>
+
+              {/* Shift cells */}
               {[0, 1, 2, 3, 4, 5, 6, 7].map(s => {
                 if (gameEx) {
-                  return <div key={s} style={S.posCell(s)}><span style={{ ...S.xBadge, opacity: 0.4 }}>✕</span></div>;
+                  return <div key={s} style={cData(s, bg, bdr)}>
+                    <span style={{ ...S.xBadge, opacity: 0.4 }}>✕</span>
+                  </div>;
                 }
-                const shiftEx = isShiftExcluded(g, s, player.name);
-                if (shiftEx) {
-                  return <div key={s} style={{ ...S.posCell(s), cursor: "pointer" }} onClick={() => restoreFromShift(g, s, player.name)}>
+                if (isShiftExcluded(g, s, player.name)) {
+                  return <div key={s} style={cData(s, bg, bdr, { cursor: "pointer" })}
+                    onClick={() => restoreFromShift(g, s, player.name)}>
                     <span style={S.xBadge}>✕</span>
                   </div>;
                 }
@@ -300,36 +323,39 @@ export default function SoccerRotation() {
                 const pos = shift ? getPos(shift, player.name) : "";
                 const forced = isShiftForced(g, s, player.name);
                 if (pos) {
-                  return <div key={s} style={{ ...S.posCell(s), cursor: "pointer" }}
+                  return <div key={s} style={cData(s, bg, bdr, { cursor: "pointer" })}
                     onClick={() => forced ? unforceFromShift(g, s, player.name) : excludeFromShift(g, s, player.name)}>
-                    <span style={{ ...S.badge(pos), ...(forced ? { boxShadow: "0 0 0 2px #22c55e", borderRadius: "5px" } : {}) }}>{pos}</span>
-                  </div>;
-                } else {
-                  return <div key={s} style={{ ...S.posCell(s), cursor: "pointer" }}
-                    onClick={() => forceIntoShift(g, s, player.name)}>
-                    <span style={{ ...S.sit, color: "#bbb" }}>–</span>
+                    <span style={{ ...S.badge(pos), ...(forced ? { boxShadow: "0 0 0 2px #22c55e", borderRadius: "5px" } : {}) }}>
+                      {pos}
+                    </span>
                   </div>;
                 }
+                return <div key={s} style={cData(s, bg, bdr, { cursor: "pointer" })}
+                  onClick={() => forceIntoShift(g, s, player.name)}>
+                  <span style={{ fontSize: "10px", color: "#bbb", padding: "2px 4px" }}>–</span>
+                </div>;
               })}
-            </div>
+            </Fragment>
           );
         })}
 
         {/* Field avg row */}
-        <div style={{ ...S.row(false), borderTop: "2px solid #e5e7eb", background: "#f8f7f4" }}>
-          <div style={{ padding: "8px", fontSize: "10px", fontWeight: 700, color: "#666" }}>Field Avg</div>
-          {[0, 1, 2, 3, 4, 5, 6, 7].map(s => {
-            const shift = games[activeGame]?.[s];
-            if (!shift) return <div key={s} style={S.posCell(s)}>–</div>;
-            const fp = [shift.D, shift.R1, shift.R2, shift.O].filter(Boolean);
-            const avg = fp.length ? fp.reduce((sum, n) => sum + (GRADE_VAL[players.find(p => p.name === n)?.grade] || 0), 0) / fp.length : 0;
-            const color = avg >= 2.3 ? "#22c55e" : avg >= 2.0 ? "#eab308" : "#ef4444";
-            return <div key={s} style={S.posCell(s)}>
-              <span style={{ fontSize: "10px", fontFamily: "'DM Mono'", fontWeight: 700, color }}>{avg.toFixed(1)}</span>
-            </div>;
-          })}
-        </div>
-      </div>
+        <div style={{ padding: "8px", fontSize: "10px", fontWeight: 700, color: "#666",
+          background: "#f8f7f4", borderTop: "2px solid #e5e7eb" }}>Field Avg</div>
+        {[0, 1, 2, 3, 4, 5, 6, 7].map(s => {
+          const shift = games[activeGame]?.[s];
+          if (!shift) return <div key={s} style={cAvg(s)}>–</div>;
+          const fp = [shift.D, shift.R1, shift.R2, shift.O].filter(Boolean);
+          const avg = fp.length
+            ? fp.reduce((sum, n) => sum + (GRADE_VAL[players.find(p => p.name === n)?.grade] || 0), 0) / fp.length
+            : 0;
+          const color = avg >= 2.3 ? "#22c55e" : avg >= 2.0 ? "#eab308" : "#ef4444";
+          return <div key={s} style={cAvg(s)}>
+            <span style={{ fontSize: "10px", fontFamily: "'DM Mono'", fontWeight: 700, color }}>{avg.toFixed(1)}</span>
+          </div>;
+        })}
+
+      </div>{/* end grid */}
 
       {/* Legend */}
       <div style={{ display: "flex", gap: "10px", flexWrap: "wrap", marginBottom: "16px", alignItems: "center" }}>
