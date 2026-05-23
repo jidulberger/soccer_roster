@@ -167,12 +167,39 @@ export default function SoccerRotation() {
     grid: { background: "#fff", borderRadius: "12px", border: "1px solid #e5e7eb", overflow: "hidden", marginBottom: "16px",
       display: "grid", gridTemplateColumns: "82px repeat(8, minmax(0, 1fr))",
       position: "relative" },
-    badge: (pos) => ({ background: POS_COLORS[pos]?.bg || "transparent", color: POS_COLORS[pos]?.text || "#ccc",
-      fontSize: "10px", fontFamily: "'DM Mono', monospace", fontWeight: 600, padding: "2px 6px", borderRadius: "4px",
-      cursor: "pointer", userSelect: "none", display: "block", textAlign: "center" }),
-    xBadge: { background: "#fef2f2", color: "#991b1b", fontSize: "10px", fontFamily: "'DM Mono', monospace",
-      fontWeight: 600, padding: "2px 5px", borderRadius: "4px", cursor: "pointer", userSelect: "none",
-      border: "1px dashed #fca5a5", display: "block", textAlign: "center" },
+    // Shared pill geometry — every cell-content state (position badge, ✕ badge,
+    // empty dash) has *identical* box dimensions. They differ only in color and
+    // border style. The transparent 1px border on non-xBadges reserves the same
+    // space the xBadge's dashed border takes, so no state is wider than another.
+    // box-sizing: border-box + minWidth keeps width predictable on narrow screens.
+    badge: (pos) => ({
+      fontSize: "10px", fontFamily: "'DM Mono', monospace", fontWeight: 600,
+      padding: "2px 4px", borderRadius: "4px",
+      border: "1px solid transparent",
+      display: "block", textAlign: "center", userSelect: "none",
+      boxSizing: "border-box", minWidth: "22px",
+      background: POS_COLORS[pos]?.bg || "transparent",
+      color: POS_COLORS[pos]?.text || "#ccc",
+      cursor: "pointer",
+    }),
+    xBadge: {
+      fontSize: "10px", fontFamily: "'DM Mono', monospace", fontWeight: 600,
+      padding: "2px 4px", borderRadius: "4px",
+      border: "1px dashed #fca5a5",
+      display: "block", textAlign: "center", userSelect: "none",
+      boxSizing: "border-box", minWidth: "22px",
+      background: "#fef2f2", color: "#991b1b",
+      cursor: "pointer",
+    },
+    sit: {
+      fontSize: "10px", fontFamily: "'DM Mono', monospace", fontWeight: 600,
+      padding: "2px 4px", borderRadius: "4px",
+      border: "1px solid transparent",
+      display: "block", textAlign: "center", userSelect: "none",
+      boxSizing: "border-box", minWidth: "22px",
+      background: "transparent", color: "#ccc",
+      cursor: "pointer",
+    },
     btn: (bg = "#1a1a2e") => ({ padding: "9px 18px", background: bg, color: "#fff", border: "none", borderRadius: "8px",
       fontFamily: "'DM Sans'", fontWeight: 600, fontSize: "12px", cursor: "pointer" }),
   };
@@ -351,7 +378,7 @@ export default function SoccerRotation() {
                 }
                 return <div key={s} style={cData(bg, bdr, { cursor: "pointer" })}
                   onClick={() => forceIntoShift(g, s, player.name)}>
-                  <span style={{ fontSize: "10px", color: "#bbb", padding: "2px 4px" }}>–</span>
+                  <span style={S.sit}>–</span>
                 </div>;
               })}
             </Fragment>
