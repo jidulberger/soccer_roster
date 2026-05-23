@@ -26,7 +26,17 @@ export default function SoccerRotation() {
   const [shiftsPerGame, setShiftsPerGame] = useState(8); // 4 | 6 | 8
   const [players, setPlayers] = useState(INITIAL_PLAYERS);
   const [showRoster, setShowRoster] = useState(false);
-  const [activeGame, setActiveGame] = useState(0);
+  const [activeGame, setActiveGameRaw] = useState(0);
+  const setActiveGame = useCallback((g) => {
+    setActiveGameRaw(g);
+    try { window.localStorage.setItem("dw_activeGame", String(g)); } catch(e) {}
+  }, []);
+  useEffect(() => {
+    try {
+      const saved = window.localStorage.getItem("dw_activeGame");
+      if (saved !== null) setActiveGameRaw(Number(saved));
+    } catch(e) {}
+  }, []);
   const [loaded, setLoaded] = useState(false);
   const [history, setHistory] = useState([]); // local undo stack — not synced to server
   // positionPicker: which sitting cell the user tapped — shows position chooser bar
