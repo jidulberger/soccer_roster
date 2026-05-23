@@ -46,7 +46,7 @@ export default function SoccerRotation() {
   const [shiftEditorModal, setShiftEditorModal] = useState(null); // { g, s } | null
   const [editorDraft, setEditorDraft] = useState({ G: null, D: null, R1: null, R2: null, O: null });
   const [editorPickingSlot, setEditorPickingSlot] = useState(null); // "G"|"D"|"R1"|"R2"|"O"|null
-  const [syncInfo, setSyncInfo] = useState({ storage: "?", savedAt: null, fetchedAt: null });
+  const [syncInfo, setSyncInfo] = useState({ storage: "?", savedAt: null, fetchedAt: null, error: null });
 
   useEffect(() => {
     fetch('/api/state')
@@ -80,7 +80,7 @@ export default function SoccerRotation() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ seed, shiftExclusions, shiftForceIns, shiftForcePositions, gameExclusions, lockedShifts, killedShifts, goalieMode, shiftsPerGame, players }),
       }).then(r => r.json()).then(j => {
-        setSyncInfo(prev => ({ ...prev, storage: j.storage || prev.storage, savedAt: j.savedAt || prev.savedAt }));
+        setSyncInfo(prev => ({ ...prev, storage: j.storage || prev.storage, savedAt: j.savedAt || prev.savedAt, error: j.error || null }));
       }).catch(() => {});
     }, 500);
     return () => clearTimeout(timer);
@@ -655,7 +655,7 @@ export default function SoccerRotation() {
           <div style={{ display: "flex", gap: "8px", flexWrap: "wrap", alignItems: "center" }}>
             <button onClick={() => setSeed(s => s + 1)} style={S.btn()}>🔄 Regenerate</button>
             <button onClick={handleSync} style={S.btn("#2563eb")}>📡 Sync</button>
-            <div title={`Backend: ${syncInfo.storage}. Saved: ${syncInfo.savedAt ? new Date(syncInfo.savedAt).toLocaleTimeString() : "—"}. Fetched: ${syncInfo.fetchedAt ? new Date(syncInfo.fetchedAt).toLocaleTimeString() : "—"}.`}
+            <div title={`Backend: ${syncInfo.storage}. Saved: ${syncInfo.savedAt ? new Date(syncInfo.savedAt).toLocaleTimeString() : "—"}. Fetched: ${syncInfo.fetchedAt ? new Date(syncInfo.fetchedAt).toLocaleTimeString() : "—"}.${syncInfo.error ? ` Error: ${syncInfo.error}` : ""}`}
               style={{ display: "flex", alignItems: "center", gap: "5px", padding: "6px 10px", background: "#f9fafb", borderRadius: "8px", border: "1px solid #e5e7eb", fontSize: "10px", fontFamily: "'DM Mono'" }}>
               <span style={{
                 width: "8px", height: "8px", borderRadius: "50%",
