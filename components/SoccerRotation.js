@@ -27,6 +27,10 @@ export default function SoccerRotation() {
   const [loaded, setLoaded] = useState(false);
   // positionPicker: which sitting cell the user tapped — shows position chooser bar
   const [positionPicker, setPositionPicker] = useState(null); // { g, s, playerName } | null
+  // shiftEditorModal: full shift editor — tap a column header to open
+  const [shiftEditorModal, setShiftEditorModal] = useState(null); // { g, s } | null
+  const [editorDraft, setEditorDraft] = useState({ G: null, D: null, R1: null, R2: null, O: null });
+  const [editorPickingSlot, setEditorPickingSlot] = useState(null); // "G"|"D"|"R1"|"R2"|"O"|null
 
   useEffect(() => {
     fetch('/api/state')
@@ -160,6 +164,20 @@ export default function SoccerRotation() {
       return next;
     });
   }, [games]);
+
+  const openShiftEditor = useCallback((g, s) => {
+    const current = lockedShifts[`${g}-${s}`] || games[g]?.[s] || {};
+    setEditorDraft({ G: current.G || null, D: current.D || null, R1: current.R1 || null, R2: current.R2 || null, O: current.O || null });
+    setEditorPickingSlot(null);
+    setShiftEditorModal({ g, s });
+  }, [lockedShifts, games]);
+
+  const saveShiftEditor = useCallback(() => {
+    if (!shiftEditorModal) return;
+    const key = `${shiftEditorModal.g}-${shiftEditorModal.s}`;
+    setLockedShifts(prev => ({ ...prev, [key]: { ...editorDraft } }));
+    setShiftEditorModal(null);
+  }, [shiftEditorModal, editorDraft]);
 
   const isGameExcluded  = (gi, name) => (gameExclusions[gi] || []).includes(name);
   const isShiftExcluded = (gi, si, name) => (shiftExclusions[`${gi}-${si}`] || []).includes(name);
@@ -368,11 +386,11 @@ export default function SoccerRotation() {
         <div style={{ padding: "8px", fontSize: "10px", fontWeight: 600, color: "#999", textTransform: "uppercase",
           background: "#fafafa", borderBottom: "2px solid #e5e7eb" }}>Player</div>
         {[1, 2, 3, 4].map(s => (
-          <div key={s} style={cHdr()}>H1·{s}</div>
+          <div key={s} style={{ ...cHdr(), cursor: "pointer" }} onClick={() => openShiftEditor(activeGame, s - 1)}>H1·{s}</div>
         ))}
         <div style={cDiv({ borderBottom: "2px solid #1a1a2e" })} />
         {[1, 2, 3, 4].map(s => (
-          <div key={s + 4} style={cHdr()}>H2·{s}</div>
+          <div key={s + 4} style={{ ...cHdr(), cursor: "pointer" }} onClick={() => openShiftEditor(activeGame, s + 3)}>H2·{s}</div>
         ))}
 
         {/* Lock row */}
@@ -585,6 +603,111 @@ export default function SoccerRotation() {
                 await fetch('/api/state', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(defaults) });
               } catch(e) {}
             }} style={{ ...S.btn("#666"), fontSize: "11px", padding: "6px 12px" }}>🗑 Reset All</button>
+          </div>
+        );
+      })()}
+      {/* ── Shift editor modal ──
+          Opens when a column header is tapped. Lets the coach assign each
+          position slot (G / D / R / R / O) from the full player list and
+          save as a locked shift. */}
+      {shiftEditorModal && (() => {
+        const { g, s } = shiftEditorModal;
+        const shiftLabel = `Game ${g + 1} · ${s < 4 ? `H1·${s + 1}` : `H2·${s - 3}`}`;
+        const posSlots = [
+          { slot: "G",  label: "Goalie",  pos: "G" },
+          { slot: "D",  label: "Defense", pos: "D" },
+          { slot: "R1", label: "Rover",   pos: "R" },
+          { slot: "R2", label: "Rover",   pos: "R" },
+          { slot: "O",  label: "Offense", pos: "O" },
+        ];
+        const assignedElsewhere = (currentSlot) =>
+          Object.entries(editorDraft)
+            .filter(([sl]) => sl !== currentSlot)
+            .map(([, name]) => name)
+            .filter(Boolean);
+
+        return (
+          <div style={{
+            position: "fixed", inset: 0, background: "rgba(0,0,0,0.6)",
+            zIndex: 100, display: "flex", alignItems: "center", justifyContent: "center",
+            padding: "16px",
+          }} onClick={() => { if (!editorPickingSlot) setShiftEditorModal(null); }}>
+            <div style={{
+              background: "#fff", borderRadius: "16px", width: "100%", maxWidth: "360px",
+              overflow: "hidden", boxShadow: "0 20px 60px rgba(0,0,0,0.4)",
+            }} onClick={e => e.stopPropagation()}>
+
+              {/* Header */}
+              <div style={{ padding: "14px 16px", background: "#1a1a2e", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                <span style={{ color: "#fff", fontWeight: 700, fontSize: "15px", fontFamily: "'DM Sans'" }}>{shiftLabel}</span>
+                <button onClick={() => setShiftEditorModal(null)}
+                  style={{ background: "none", border: "none", color: "#94a3b8", fontSize: "18px", cursor: "pointer", lineHeight: 1 }}>✕</button>
+              </div>
+
+              {editorPickingSlot ? (
+                /* Player picker sub-screen */
+                <>
+                  <div style={{ padding: "10px 16px", background: "#f8fafc", borderBottom: "1px solid #e5e7eb",
+                    display: "flex", alignItems: "center", gap: "10px" }}>
+                    <button onClick={() => setEditorPickingSlot(null)}
+                      style={{ background: "none", border: "none", color: "#2563eb", fontSize: "13px", fontWeight: 600, cursor: "pointer", padding: 0 }}>← Back</button>
+                    <span style={{ fontSize: "12px", color: "#666" }}>
+                      Pick {editorPickingSlot === "R1" || editorPickingSlot === "R2" ? "Rover" : posSlots.find(p => p.slot === editorPickingSlot)?.label}
+                    </span>
+                  </div>
+                  <div style={{ maxHeight: "320px", overflowY: "auto" }}>
+                    <div style={{ padding: "12px 16px", fontSize: "13px", color: "#999", cursor: "pointer", borderBottom: "1px solid #f0f0f0" }}
+                      onClick={() => { setEditorDraft(prev => ({ ...prev, [editorPickingSlot]: null })); setEditorPickingSlot(null); }}>
+                      — Leave empty —
+                    </div>
+                    {players
+                      .filter(p => editorPickingSlot !== "G" || p.canGoalie)
+                      .filter(p => !assignedElsewhere(editorPickingSlot).includes(p.name))
+                      .map(p => (
+                        <div key={p.name}
+                          style={{ padding: "12px 16px", display: "flex", alignItems: "center", gap: "10px",
+                            cursor: "pointer", borderBottom: "1px solid #f5f5f5",
+                            background: editorDraft[editorPickingSlot] === p.name ? "#eff6ff" : "#fff" }}
+                          onClick={() => { setEditorDraft(prev => ({ ...prev, [editorPickingSlot]: p.name })); setEditorPickingSlot(null); }}>
+                          <span style={{ fontSize: "13px", fontWeight: 600, flex: 1 }}>{p.name}</span>
+                          <span style={{ fontSize: "10px", fontFamily: "'DM Mono'", fontWeight: 600, color: "#999" }}>{p.grade}</span>
+                          {editorPickingSlot === "G" && !p.canGoalie && (
+                            <span style={{ fontSize: "9px", color: "#f59e0b" }}>no GK</span>
+                          )}
+                        </div>
+                      ))
+                    }
+                  </div>
+                </>
+              ) : (
+                /* Position slot list */
+                <>
+                  {posSlots.map(({ slot, label, pos }) => (
+                    <div key={slot}
+                      style={{ padding: "13px 16px", display: "flex", alignItems: "center", gap: "12px",
+                        borderBottom: "1px solid #f0f0f0", cursor: "pointer" }}
+                      onClick={() => setEditorPickingSlot(slot)}>
+                      <span style={{ ...S.badge(pos), cursor: "default", minWidth: "26px", fontSize: "11px", padding: "3px 6px" }}>{pos}</span>
+                      <span style={{ fontSize: "12px", color: "#666", width: "58px" }}>{label}</span>
+                      <span style={{ fontSize: "14px", fontWeight: 600, flex: 1, color: editorDraft[slot] ? "#1a1a2e" : "#ccc" }}>
+                        {editorDraft[slot] || "—"}
+                      </span>
+                      <span style={{ fontSize: "14px", color: "#cbd5e1" }}>›</span>
+                    </div>
+                  ))}
+                  <div style={{ padding: "12px 16px", display: "flex", gap: "8px", borderTop: "2px solid #f0f0f0" }}>
+                    <button onClick={saveShiftEditor}
+                      style={{ ...S.btn(), flex: 1, fontSize: "13px" }}>🔒 Save & Lock</button>
+                    {lockedShifts[`${g}-${s}`] && (
+                      <button onClick={() => {
+                        setLockedShifts(prev => { const next = { ...prev }; delete next[`${g}-${s}`]; return next; });
+                        setShiftEditorModal(null);
+                      }} style={{ ...S.btn("#666"), fontSize: "11px", padding: "9px 12px" }}>Unlock</button>
+                    )}
+                  </div>
+                </>
+              )}
+            </div>
           </div>
         );
       })()}
