@@ -1,6 +1,6 @@
 'use client'
 
-import { Fragment, useState, useMemo, useCallback, useEffect } from "react";
+import { Fragment, useState, useMemo, useCallback, useEffect, useRef } from "react";
 import { createPortal } from "react-dom";
 import {
   INITIAL_PLAYERS, ALL_GRADES, GRADE_VAL, GRADE_COLORS, POS_COLORS,
@@ -26,6 +26,7 @@ export default function SoccerRotation() {
   const [showRoster, setShowRoster] = useState(false);
   const [activeGame, setActiveGame] = useState(0);
   const [loaded, setLoaded] = useState(false);
+  const [history, setHistory] = useState([]); // local undo stack — not synced to server
   // positionPicker: which sitting cell the user tapped — shows position chooser bar
   const [positionPicker, setPositionPicker] = useState(null); // { g, s, playerName } | null
   // shiftEditorModal: full shift editor — tap a column header to open
@@ -74,20 +75,45 @@ export default function SoccerRotation() {
     } catch(e) {}
   }, []);
 
+  // Undo stack — snapshot overrideable state into a ref so saveToHistory is stable
+  const snapRef = useRef({});
+  useEffect(() => {
+    snapRef.current = { shiftExclusions, shiftForceIns, shiftForcePositions, gameExclusions, lockedShifts };
+  }, [shiftExclusions, shiftForceIns, shiftForcePositions, gameExclusions, lockedShifts]);
+
+  const saveToHistory = useCallback(() => {
+    setHistory(prev => [...prev.slice(-9), { ...snapRef.current }]);
+  }, []);
+
+  const undo = useCallback(() => {
+    setHistory(prev => {
+      if (prev.length === 0) return prev;
+      const snap = prev[prev.length - 1];
+      setShiftExclusions(snap.shiftExclusions);
+      setShiftForceIns(snap.shiftForceIns);
+      setShiftForcePositions(snap.shiftForcePositions);
+      setGameExclusions(snap.gameExclusions);
+      setLockedShifts(snap.lockedShifts);
+      return prev.slice(0, -1);
+    });
+  }, []);
+
   const { games, totalShifts, totalPositions } = useMemo(() => {
     return generateRotation(seed, players, shiftExclusions, gameExclusions, shiftForceIns, lockedShifts, shiftForcePositions);
   }, [seed, players, shiftExclusions, gameExclusions, shiftForceIns, lockedShifts, shiftForcePositions]);
 
   const excludeFromShift = useCallback((gameIdx, shiftIdx, playerName) => {
+    saveToHistory();
     setShiftExclusions(prev => {
       const key = `${gameIdx}-${shiftIdx}`;
       const list = [...(prev[key] || [])];
       if (!list.includes(playerName)) list.push(playerName);
       return { ...prev, [key]: list };
     });
-  }, []);
+  }, [saveToHistory]);
 
   const toggleGameExclusion = useCallback((gameIdx, playerName) => {
+    saveToHistory();
     setGameExclusions(prev => {
       const list = [...(prev[gameIdx] || [])];
       const idx = list.indexOf(playerName);
@@ -110,6 +136,7 @@ export default function SoccerRotation() {
   }, []);
 
   const restoreFromShift = useCallback((gameIdx, shiftIdx, playerName) => {
+    saveToHistory();
     setShiftExclusions(prev => {
       const key = `${gameIdx}-${shiftIdx}`;
       if (!prev[key]) return prev;
@@ -117,11 +144,12 @@ export default function SoccerRotation() {
       if (list.length === 0) { const next = { ...prev }; delete next[key]; return next; }
       return { ...prev, [key]: list };
     });
-  }, []);
+  }, [saveToHistory]);
 
   // Force a player into a shift, optionally at a specific position (G/D/R/O).
   // If position is null, any position (algorithm decides).
   const forceIntoShift = useCallback((gameIdx, shiftIdx, playerName, position = null) => {
+    saveToHistory();
     const key = `${gameIdx}-${shiftIdx}`;
     setShiftForceIns(prev => {
       const list = [...(prev[key] || [])];
@@ -134,9 +162,10 @@ export default function SoccerRotation() {
         [key]: { ...(prev[key] || {}), [playerName]: position },
       }));
     }
-  }, []);
+  }, [saveToHistory]);
 
   const unforceFromShift = useCallback((gameIdx, shiftIdx, playerName) => {
+    saveToHistory();
     const key = `${gameIdx}-${shiftIdx}`;
     setShiftForceIns(prev => {
       if (!prev[key]) return prev;
@@ -151,9 +180,10 @@ export default function SoccerRotation() {
       if (Object.keys(rest).length === 0) { const next = { ...prev }; delete next[key]; return next; }
       return { ...prev, [key]: rest };
     });
-  }, []);
+  }, [saveToHistory]);
 
   const toggleLockShift = useCallback((gameIdx, shiftIdx) => {
+    saveToHistory();
     const key = `${gameIdx}-${shiftIdx}`;
     setLockedShifts(prev => {
       const next = { ...prev };
@@ -164,7 +194,7 @@ export default function SoccerRotation() {
       }
       return next;
     });
-  }, [games]);
+  }, [games, saveToHistory]);
 
   const openShiftEditor = useCallback((g, s) => {
     const current = lockedShifts[`${g}-${s}`] || games[g]?.[s] || {};
@@ -175,10 +205,11 @@ export default function SoccerRotation() {
 
   const saveShiftEditor = useCallback(() => {
     if (!shiftEditorModal) return;
+    saveToHistory();
     const key = `${shiftEditorModal.g}-${shiftEditorModal.s}`;
     setLockedShifts(prev => ({ ...prev, [key]: { ...editorDraft } }));
     setShiftEditorModal(null);
-  }, [shiftEditorModal, editorDraft]);
+  }, [shiftEditorModal, editorDraft, saveToHistory]);
 
   const isGameExcluded  = (gi, name) => (gameExclusions[gi] || []).includes(name);
   const isShiftExcluded = (gi, si, name) => (shiftExclusions[`${gi}-${si}`] || []).includes(name);
@@ -585,11 +616,15 @@ export default function SoccerRotation() {
           <div style={{ display: "flex", gap: "8px", flexWrap: "wrap", alignItems: "center" }}>
             <button onClick={() => setSeed(s => s + 1)} style={S.btn()}>🔄 Regenerate</button>
             <button onClick={handleSync} style={S.btn("#2563eb")}>📡 Sync</button>
+            {history.length > 0 && (
+              <button onClick={undo} style={S.btn("#7c3aed")}>↩ Undo</button>
+            )}
             {hasAnyOverrides && (
               <button onClick={() => {
+                saveToHistory();
                 setShiftExclusions({}); setGameExclusions({}); setShiftForceIns({});
                 setShiftForcePositions({}); setLockedShifts({});
-              }} style={S.btn("#dc2626")}>↩ Clear All</button>
+              }} style={S.btn("#dc2626")}>Clear All</button>
             )}
             <div style={{ display: "flex", alignItems: "center", gap: "6px", padding: "6px 14px", background: "#f9fafb",
               borderRadius: "8px", border: "1px solid #e5e7eb", fontSize: "12px", fontFamily: "'DM Sans'" }}>
