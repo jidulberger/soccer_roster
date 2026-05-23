@@ -1,6 +1,7 @@
 'use client'
 
 import { Fragment, useState, useMemo, useCallback, useEffect } from "react";
+import { createPortal } from "react-dom";
 import {
   INITIAL_PLAYERS, ALL_GRADES, GRADE_VAL, GRADE_COLORS, POS_COLORS,
   generateRotation,
@@ -606,111 +607,122 @@ export default function SoccerRotation() {
           </div>
         );
       })()}
-      {/* ── Shift editor modal ──
-          Opens when a column header is tapped. Lets the coach assign each
-          position slot (G / D / R / R / O) from the full player list and
-          save as a locked shift. */}
-      {shiftEditorModal && (() => {
-        const { g, s } = shiftEditorModal;
-        const shiftLabel = `Game ${g + 1} · ${s < 4 ? `H1·${s + 1}` : `H2·${s - 3}`}`;
-        const posSlots = [
-          { slot: "G",  label: "Goalie",  pos: "G" },
-          { slot: "D",  label: "Defense", pos: "D" },
-          { slot: "R1", label: "Rover",   pos: "R" },
-          { slot: "R2", label: "Rover",   pos: "R" },
-          { slot: "O",  label: "Offense", pos: "O" },
-        ];
-        const assignedElsewhere = (currentSlot) =>
-          Object.entries(editorDraft)
-            .filter(([sl]) => sl !== currentSlot)
-            .map(([, name]) => name)
-            .filter(Boolean);
 
-        return (
-          <div style={{
-            position: "fixed", inset: 0, background: "rgba(0,0,0,0.6)",
-            zIndex: 100, display: "flex", alignItems: "center", justifyContent: "center",
-            padding: "16px",
-          }} onClick={() => { if (!editorPickingSlot) setShiftEditorModal(null); }}>
-            <div style={{
-              background: "#fff", borderRadius: "16px", width: "100%", maxWidth: "360px",
-              overflow: "hidden", boxShadow: "0 20px 60px rgba(0,0,0,0.4)",
-            }} onClick={e => e.stopPropagation()}>
+      <ShiftEditorModal
+        modal={shiftEditorModal}
+        draft={editorDraft}
+        pickingSlot={editorPickingSlot}
+        players={players}
+        lockedShifts={lockedShifts}
+        S={S}
+        onClose={() => setShiftEditorModal(null)}
+        onSave={saveShiftEditor}
+        onUnlock={() => {
+          if (!shiftEditorModal) return;
+          setLockedShifts(prev => { const next = { ...prev }; delete next[`${shiftEditorModal.g}-${shiftEditorModal.s}`]; return next; });
+          setShiftEditorModal(null);
+        }}
+        setDraft={setEditorDraft}
+        setPickingSlot={setEditorPickingSlot}
+      />
+    </div>
+  );
+}
 
-              {/* Header */}
-              <div style={{ padding: "14px 16px", background: "#1a1a2e", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-                <span style={{ color: "#fff", fontWeight: 700, fontSize: "15px", fontFamily: "'DM Sans'" }}>{shiftLabel}</span>
-                <button onClick={() => setShiftEditorModal(null)}
-                  style={{ background: "none", border: "none", color: "#94a3b8", fontSize: "18px", cursor: "pointer", lineHeight: 1 }}>✕</button>
+// ── Shift Editor Modal ──
+// Rendered via portal so position:fixed is relative to the viewport, not any
+// ancestor. Tap a column header (H1·1 … H2·4) to open.
+function ShiftEditorModal({ modal, draft, pickingSlot, players, lockedShifts, S, onClose, onSave, onUnlock, setDraft, setPickingSlot }) {
+  if (!modal) return null;
+  const { g, s } = modal;
+  const shiftLabel = `Game ${g + 1} · ${s < 4 ? `H1·${s + 1}` : `H2·${s - 3}`}`;
+  const posSlots = [
+    { slot: "G",  label: "Goalie",  pos: "G" },
+    { slot: "D",  label: "Defense", pos: "D" },
+    { slot: "R1", label: "Rover",   pos: "R" },
+    { slot: "R2", label: "Rover",   pos: "R" },
+    { slot: "O",  label: "Offense", pos: "O" },
+  ];
+  const assignedElsewhere = (currentSlot) =>
+    Object.entries(draft)
+      .filter(([sl]) => sl !== currentSlot)
+      .map(([, name]) => name)
+      .filter(Boolean);
+
+  const overlayStyle = {
+    position: "fixed", top: 0, right: 0, bottom: 0, left: 0,
+    background: "rgba(0,0,0,0.6)", zIndex: 9999,
+    display: "flex", alignItems: "center", justifyContent: "center", padding: "16px",
+  };
+  const cardStyle = {
+    background: "#fff", borderRadius: "16px", width: "100%", maxWidth: "360px",
+    overflow: "hidden", boxShadow: "0 20px 60px rgba(0,0,0,0.4)",
+  };
+
+  return createPortal(
+    <div style={overlayStyle} onClick={() => { if (!pickingSlot) onClose(); }}>
+      <div style={cardStyle} onClick={e => e.stopPropagation()}>
+
+        <div style={{ padding: "14px 16px", background: "#1a1a2e", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+          <span style={{ color: "#fff", fontWeight: 700, fontSize: "15px", fontFamily: "'DM Sans'" }}>{shiftLabel}</span>
+          <button onClick={onClose} style={{ background: "none", border: "none", color: "#94a3b8", fontSize: "20px", cursor: "pointer", lineHeight: 1, padding: "4px 8px" }}>✕</button>
+        </div>
+
+        {pickingSlot ? (
+          <>
+            <div style={{ padding: "10px 16px", background: "#f8fafc", borderBottom: "1px solid #e5e7eb", display: "flex", alignItems: "center", gap: "10px" }}>
+              <button onClick={() => setPickingSlot(null)}
+                style={{ background: "none", border: "none", color: "#2563eb", fontSize: "13px", fontWeight: 600, cursor: "pointer", padding: "4px 0" }}>← Back</button>
+              <span style={{ fontSize: "12px", color: "#666" }}>
+                Pick {pickingSlot === "R1" || pickingSlot === "R2" ? "Rover" : posSlots.find(p => p.slot === pickingSlot)?.label}
+              </span>
+            </div>
+            <div style={{ maxHeight: "340px", overflowY: "auto" }}>
+              <div style={{ padding: "14px 16px", fontSize: "13px", color: "#999", cursor: "pointer", borderBottom: "1px solid #f0f0f0" }}
+                onClick={() => { setDraft(prev => ({ ...prev, [pickingSlot]: null })); setPickingSlot(null); }}>
+                — Leave empty —
               </div>
-
-              {editorPickingSlot ? (
-                /* Player picker sub-screen */
-                <>
-                  <div style={{ padding: "10px 16px", background: "#f8fafc", borderBottom: "1px solid #e5e7eb",
-                    display: "flex", alignItems: "center", gap: "10px" }}>
-                    <button onClick={() => setEditorPickingSlot(null)}
-                      style={{ background: "none", border: "none", color: "#2563eb", fontSize: "13px", fontWeight: 600, cursor: "pointer", padding: 0 }}>← Back</button>
-                    <span style={{ fontSize: "12px", color: "#666" }}>
-                      Pick {editorPickingSlot === "R1" || editorPickingSlot === "R2" ? "Rover" : posSlots.find(p => p.slot === editorPickingSlot)?.label}
-                    </span>
+              {players
+                .filter(p => pickingSlot !== "G" || p.canGoalie)
+                .filter(p => !assignedElsewhere(pickingSlot).includes(p.name))
+                .map(p => (
+                  <div key={p.name}
+                    style={{ padding: "14px 16px", display: "flex", alignItems: "center", gap: "10px",
+                      cursor: "pointer", borderBottom: "1px solid #f5f5f5",
+                      background: draft[pickingSlot] === p.name ? "#eff6ff" : "#fff" }}
+                    onClick={() => { setDraft(prev => ({ ...prev, [pickingSlot]: p.name })); setPickingSlot(null); }}>
+                    <span style={{ fontSize: "14px", fontWeight: 600, flex: 1 }}>{p.name}</span>
+                    <span style={{ fontSize: "10px", fontFamily: "'DM Mono'", fontWeight: 600, color: "#999" }}>{p.grade}</span>
                   </div>
-                  <div style={{ maxHeight: "320px", overflowY: "auto" }}>
-                    <div style={{ padding: "12px 16px", fontSize: "13px", color: "#999", cursor: "pointer", borderBottom: "1px solid #f0f0f0" }}
-                      onClick={() => { setEditorDraft(prev => ({ ...prev, [editorPickingSlot]: null })); setEditorPickingSlot(null); }}>
-                      — Leave empty —
-                    </div>
-                    {players
-                      .filter(p => editorPickingSlot !== "G" || p.canGoalie)
-                      .filter(p => !assignedElsewhere(editorPickingSlot).includes(p.name))
-                      .map(p => (
-                        <div key={p.name}
-                          style={{ padding: "12px 16px", display: "flex", alignItems: "center", gap: "10px",
-                            cursor: "pointer", borderBottom: "1px solid #f5f5f5",
-                            background: editorDraft[editorPickingSlot] === p.name ? "#eff6ff" : "#fff" }}
-                          onClick={() => { setEditorDraft(prev => ({ ...prev, [editorPickingSlot]: p.name })); setEditorPickingSlot(null); }}>
-                          <span style={{ fontSize: "13px", fontWeight: 600, flex: 1 }}>{p.name}</span>
-                          <span style={{ fontSize: "10px", fontFamily: "'DM Mono'", fontWeight: 600, color: "#999" }}>{p.grade}</span>
-                          {editorPickingSlot === "G" && !p.canGoalie && (
-                            <span style={{ fontSize: "9px", color: "#f59e0b" }}>no GK</span>
-                          )}
-                        </div>
-                      ))
-                    }
-                  </div>
-                </>
-              ) : (
-                /* Position slot list */
-                <>
-                  {posSlots.map(({ slot, label, pos }) => (
-                    <div key={slot}
-                      style={{ padding: "13px 16px", display: "flex", alignItems: "center", gap: "12px",
-                        borderBottom: "1px solid #f0f0f0", cursor: "pointer" }}
-                      onClick={() => setEditorPickingSlot(slot)}>
-                      <span style={{ ...S.badge(pos), cursor: "default", minWidth: "26px", fontSize: "11px", padding: "3px 6px" }}>{pos}</span>
-                      <span style={{ fontSize: "12px", color: "#666", width: "58px" }}>{label}</span>
-                      <span style={{ fontSize: "14px", fontWeight: 600, flex: 1, color: editorDraft[slot] ? "#1a1a2e" : "#ccc" }}>
-                        {editorDraft[slot] || "—"}
-                      </span>
-                      <span style={{ fontSize: "14px", color: "#cbd5e1" }}>›</span>
-                    </div>
-                  ))}
-                  <div style={{ padding: "12px 16px", display: "flex", gap: "8px", borderTop: "2px solid #f0f0f0" }}>
-                    <button onClick={saveShiftEditor}
-                      style={{ ...S.btn(), flex: 1, fontSize: "13px" }}>🔒 Save & Lock</button>
-                    {lockedShifts[`${g}-${s}`] && (
-                      <button onClick={() => {
-                        setLockedShifts(prev => { const next = { ...prev }; delete next[`${g}-${s}`]; return next; });
-                        setShiftEditorModal(null);
-                      }} style={{ ...S.btn("#666"), fontSize: "11px", padding: "9px 12px" }}>Unlock</button>
-                    )}
-                  </div>
-                </>
+                ))
+              }
+            </div>
+          </>
+        ) : (
+          <>
+            {posSlots.map(({ slot, label, pos }) => (
+              <div key={slot}
+                style={{ padding: "14px 16px", display: "flex", alignItems: "center", gap: "12px",
+                  borderBottom: "1px solid #f0f0f0", cursor: "pointer" }}
+                onClick={() => setPickingSlot(slot)}>
+                <span style={{ ...S.badge(pos), cursor: "default", minWidth: "26px", fontSize: "11px", padding: "3px 6px" }}>{pos}</span>
+                <span style={{ fontSize: "12px", color: "#666", width: "60px" }}>{label}</span>
+                <span style={{ fontSize: "14px", fontWeight: 600, flex: 1, color: draft[slot] ? "#1a1a2e" : "#ccc" }}>
+                  {draft[slot] || "—"}
+                </span>
+                <span style={{ fontSize: "16px", color: "#cbd5e1" }}>›</span>
+              </div>
+            ))}
+            <div style={{ padding: "12px 16px", display: "flex", gap: "8px", borderTop: "2px solid #f0f0f0" }}>
+              <button onClick={onSave} style={{ ...S.btn(), flex: 1, fontSize: "13px" }}>🔒 Save & Lock</button>
+              {lockedShifts[`${g}-${s}`] && (
+                <button onClick={onUnlock} style={{ ...S.btn("#666"), fontSize: "11px", padding: "9px 12px" }}>Unlock</button>
               )}
             </div>
-          </div>
-        );
-      })()}
-    </div>
+          </>
+        )}
+      </div>
+    </div>,
+    document.body
   );
 }
