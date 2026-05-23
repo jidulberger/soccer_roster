@@ -659,6 +659,23 @@ export default function SoccerRotation() {
             <div style={{ display: "flex", gap: "10px", marginBottom: "10px" }}>
               {["G", "D", "R", "O"].map(pos => (
                 <button key={pos} onClick={() => {
+                  // Moving goalie → field: clear their forced-G in all other shifts of this game
+                  // so the algorithm can reassign a replacement goalie in those shifts too.
+                  if (positionPicker.currentPos === "G" && pos !== "G") {
+                    setShiftForcePositions(prev => {
+                      const next = { ...prev };
+                      for (let si = 0; si < 8; si++) {
+                        if (si === positionPicker.s) continue;
+                        const key = `${positionPicker.g}-${si}`;
+                        if (next[key]?.[positionPicker.playerName] === "G") {
+                          const { [positionPicker.playerName]: _r, ...rest } = next[key];
+                          if (Object.keys(rest).length === 0) delete next[key];
+                          else next[key] = rest;
+                        }
+                      }
+                      return next;
+                    });
+                  }
                   forceIntoShift(positionPicker.g, positionPicker.s, positionPicker.playerName, pos);
                   setPositionPicker(null);
                 }} style={{
