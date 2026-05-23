@@ -9,8 +9,16 @@ import {
 export default function SoccerRotation() {
   const [seed, setSeed] = useState(0);
   const [shiftExclusions, setShiftExclusions] = useState({});
-  const [shiftForceIns, setShiftForceIns] = useState({});
-  const [shiftForcePositions, setShiftForcePositions] = useState({});
+  const [shiftForceIns, setShiftForceIns] = useState({
+    // Game 1 H1·2: Thea / Abigail / Emerson / Maddie on field, positions by algorithm
+    "0-1": ["Thea", "Abigail", "Emerson", "Maddie"],
+  });
+  const [shiftForcePositions, setShiftForcePositions] = useState({
+    // Game 1 H1·1: Harlow G · Ona D · Maron R · Amelia R · Mae Mae O
+    "0-0": { "Harlow": "G", "Ona": "D", "Maron": "R", "Amelia": "R", "Mae Mae": "O" },
+    // Game 1 H1·2: Harlow stays in goal
+    "0-1": { "Harlow": "G" },
+  });
   const [gameExclusions, setGameExclusions] = useState({});
   const [lockedShifts, setLockedShifts] = useState({});
   const [players, setPlayers] = useState(INITIAL_PLAYERS);
