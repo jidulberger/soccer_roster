@@ -162,10 +162,11 @@ export default function SoccerRotation() {
     tabs: { display: "flex", gap: "6px", marginBottom: "12px" },
     tab: (on) => ({ flex: 1, padding: "9px 0", border: on ? "2px solid #1a1a2e" : "2px solid #e5e7eb", borderRadius: "8px",
       background: on ? "#1a1a2e" : "#fff", color: on ? "#fff" : "#1a1a2e", fontFamily: "'DM Sans'", fontWeight: 600, fontSize: "13px", cursor: "pointer" }),
-    // Single flat grid; halftime line is a dedicated 3px column between H1 and H2.
-    // 10 columns total: 1 name + 4 H1 + 1 divider + 4 H2. Every row supplies exactly 10 cells.
+    // Single flat grid; halftime line is drawn as a position:absolute overlay
+    // (see <HalftimeLine /> below the cells) so it doesn't depend on any cell layout.
     grid: { background: "#fff", borderRadius: "12px", border: "1px solid #e5e7eb", overflow: "hidden", marginBottom: "16px",
-      display: "grid", gridTemplateColumns: "82px repeat(4, minmax(0, 1fr)) 3px repeat(4, minmax(0, 1fr))" },
+      display: "grid", gridTemplateColumns: "82px repeat(8, minmax(0, 1fr))",
+      position: "relative" },
     badge: (pos) => ({ background: POS_COLORS[pos]?.bg || "transparent", color: POS_COLORS[pos]?.text || "#ccc",
       fontSize: "10px", fontFamily: "'DM Mono', monospace", fontWeight: 600, padding: "2px 6px", borderRadius: "4px",
       cursor: "pointer", userSelect: "none", display: "block", textAlign: "center" }),
@@ -188,11 +189,23 @@ export default function SoccerRotation() {
   const cAvg  = (extra = {}) => ({ padding: "4px 2px", display: "flex", alignItems: "center", justifyContent: "center",
     overflow: "hidden", background: "#f8f7f4", borderTop: "2px solid #e5e7eb", ...extra });
 
-  // The halftime line is rendered as a dedicated grid column. Each row places one
-  // of these <Divider /> cells between H1 and H2; stacked top-to-bottom they form
-  // the vertical line. Because it's a real grid track at a fixed pixel width, the
-  // line's x-position cannot drift no matter what's in adjacent cells.
-  const Divider = () => <div style={{ background: "#1a1a2e" }} />;
+  // Halftime line: a position:absolute overlay placed at the exact midpoint of the
+  // shift columns. Because its x-position is computed by calc() from the container's
+  // own width — not derived from cell layout, fr fractions, or row context — it
+  // physically cannot render at different x-positions in different rows.
+  // 82px name column + half of remaining width, minus 1.5px to center the 3px line.
+  const HalftimeLine = () => (
+    <div style={{
+      position: "absolute",
+      top: 0,
+      bottom: 0,
+      left: "calc(82px + (100% - 82px) / 2 - 1.5px)",
+      width: "3px",
+      background: "#1a1a2e",
+      pointerEvents: "none",
+      zIndex: 2,
+    }} />
+  );
 
   if (!loaded) {
     return (
@@ -273,35 +286,24 @@ export default function SoccerRotation() {
         {/* Header row */}
         <div style={{ padding: "8px", fontSize: "10px", fontWeight: 600, color: "#999", textTransform: "uppercase",
           background: "#fafafa", borderBottom: "2px solid #e5e7eb" }}>Player</div>
-        {[1, 2, 3, 4].map(s => (
-          <div key={s} style={cHdr()}>H1·{s}</div>
-        ))}
-        <Divider />
-        {[5, 6, 7, 8].map(s => (
-          <div key={s} style={cHdr()}>H2·{s - 4}</div>
+        {[1, 2, 3, 4, 5, 6, 7, 8].map(s => (
+          <div key={s} style={cHdr()}>{s <= 4 ? `H1·${s}` : `H2·${s - 4}`}</div>
         ))}
 
         {/* Lock row */}
         <div style={{ padding: "4px 8px", fontSize: "9px", fontWeight: 600, color: "#888",
           background: "#f0fdf4", borderBottom: "1px solid #e5e7eb" }}>Lock</div>
-        {(() => {
-          const renderLockCell = (s) => {
-            const lk = `${activeGame}-${s}`;
-            const isLocked = !!lockedShifts[lk];
-            return (
-              <div key={s} style={cLock({ cursor: "pointer" })} onClick={() => toggleLockShift(activeGame, s)}>
-                <span style={{ fontSize: "12px", userSelect: "none", opacity: isLocked ? 1 : 0.3 }}>
-                  {isLocked ? "🔒" : "🔓"}
-                </span>
-              </div>
-            );
-          };
-          return <>
-            {[0, 1, 2, 3].map(renderLockCell)}
-            <Divider />
-            {[4, 5, 6, 7].map(renderLockCell)}
-          </>;
-        })()}
+        {[0, 1, 2, 3, 4, 5, 6, 7].map(s => {
+          const lk = `${activeGame}-${s}`;
+          const isLocked = !!lockedShifts[lk];
+          return (
+            <div key={s} style={cLock({ cursor: "pointer" })} onClick={() => toggleLockShift(activeGame, s)}>
+              <span style={{ fontSize: "12px", userSelect: "none", opacity: isLocked ? 1 : 0.3 }}>
+                {isLocked ? "🔒" : "🔓"}
+              </span>
+            </div>
+          );
+        })}
 
         {/* Player rows */}
         {players.map((player, pi) => {
@@ -323,42 +325,35 @@ export default function SoccerRotation() {
                 </span>
               </div>
 
-              {/* Shift cells — split by half with the Divider between */}
-              {(() => {
-                const renderShiftCell = (s) => {
-                  if (gameEx) {
-                    return <div key={s} style={cData(bg, bdr)}>
-                      <span style={{ ...S.xBadge, opacity: 0.4 }}>✕</span>
-                    </div>;
-                  }
-                  if (isShiftExcluded(g, s, player.name)) {
-                    return <div key={s} style={cData(bg, bdr, { cursor: "pointer" })}
-                      onClick={() => restoreFromShift(g, s, player.name)}>
-                      <span style={S.xBadge}>✕</span>
-                    </div>;
-                  }
-                  const shift = games[g]?.[s];
-                  const pos = shift ? getPos(shift, player.name) : "";
-                  const forced = isShiftForced(g, s, player.name);
-                  if (pos) {
-                    return <div key={s} style={cData(bg, bdr, { cursor: "pointer" })}
-                      onClick={() => forced ? unforceFromShift(g, s, player.name) : excludeFromShift(g, s, player.name)}>
-                      <span style={{ ...S.badge(pos), ...(forced ? { boxShadow: "0 0 0 2px #22c55e", borderRadius: "5px" } : {}) }}>
-                        {pos}
-                      </span>
-                    </div>;
-                  }
-                  return <div key={s} style={cData(bg, bdr, { cursor: "pointer" })}
-                    onClick={() => forceIntoShift(g, s, player.name)}>
-                    <span style={{ fontSize: "10px", color: "#bbb", padding: "2px 4px" }}>–</span>
+              {/* Shift cells */}
+              {[0, 1, 2, 3, 4, 5, 6, 7].map(s => {
+                if (gameEx) {
+                  return <div key={s} style={cData(bg, bdr)}>
+                    <span style={{ ...S.xBadge, opacity: 0.4 }}>✕</span>
                   </div>;
-                };
-                return <>
-                  {[0, 1, 2, 3].map(renderShiftCell)}
-                  <Divider />
-                  {[4, 5, 6, 7].map(renderShiftCell)}
-                </>;
-              })()}
+                }
+                if (isShiftExcluded(g, s, player.name)) {
+                  return <div key={s} style={cData(bg, bdr, { cursor: "pointer" })}
+                    onClick={() => restoreFromShift(g, s, player.name)}>
+                    <span style={S.xBadge}>✕</span>
+                  </div>;
+                }
+                const shift = games[g]?.[s];
+                const pos = shift ? getPos(shift, player.name) : "";
+                const forced = isShiftForced(g, s, player.name);
+                if (pos) {
+                  return <div key={s} style={cData(bg, bdr, { cursor: "pointer" })}
+                    onClick={() => forced ? unforceFromShift(g, s, player.name) : excludeFromShift(g, s, player.name)}>
+                    <span style={{ ...S.badge(pos), ...(forced ? { boxShadow: "0 0 0 2px #22c55e", borderRadius: "5px" } : {}) }}>
+                      {pos}
+                    </span>
+                  </div>;
+                }
+                return <div key={s} style={cData(bg, bdr, { cursor: "pointer" })}
+                  onClick={() => forceIntoShift(g, s, player.name)}>
+                  <span style={{ fontSize: "10px", color: "#bbb", padding: "2px 4px" }}>–</span>
+                </div>;
+              })}
             </Fragment>
           );
         })}
@@ -366,25 +361,21 @@ export default function SoccerRotation() {
         {/* Field avg row */}
         <div style={{ padding: "8px", fontSize: "10px", fontWeight: 700, color: "#666",
           background: "#f8f7f4", borderTop: "2px solid #e5e7eb" }}>Field Avg</div>
-        {(() => {
-          const renderAvgCell = (s) => {
-            const shift = games[activeGame]?.[s];
-            if (!shift) return <div key={s} style={cAvg()}>–</div>;
-            const fp = [shift.D, shift.R1, shift.R2, shift.O].filter(Boolean);
-            const avg = fp.length
-              ? fp.reduce((sum, n) => sum + (GRADE_VAL[players.find(p => p.name === n)?.grade] || 0), 0) / fp.length
-              : 0;
-            const color = avg >= 2.3 ? "#22c55e" : avg >= 2.0 ? "#eab308" : "#ef4444";
-            return <div key={s} style={cAvg()}>
-              <span style={{ fontSize: "10px", fontFamily: "'DM Mono'", fontWeight: 700, color }}>{avg.toFixed(1)}</span>
-            </div>;
-          };
-          return <>
-            {[0, 1, 2, 3].map(renderAvgCell)}
-            <Divider />
-            {[4, 5, 6, 7].map(renderAvgCell)}
-          </>;
-        })()}
+        {[0, 1, 2, 3, 4, 5, 6, 7].map(s => {
+          const shift = games[activeGame]?.[s];
+          if (!shift) return <div key={s} style={cAvg()}>–</div>;
+          const fp = [shift.D, shift.R1, shift.R2, shift.O].filter(Boolean);
+          const avg = fp.length
+            ? fp.reduce((sum, n) => sum + (GRADE_VAL[players.find(p => p.name === n)?.grade] || 0), 0) / fp.length
+            : 0;
+          const color = avg >= 2.3 ? "#22c55e" : avg >= 2.0 ? "#eab308" : "#ef4444";
+          return <div key={s} style={cAvg()}>
+            <span style={{ fontSize: "10px", fontFamily: "'DM Mono'", fontWeight: 700, color }}>{avg.toFixed(1)}</span>
+          </div>;
+        })}
+
+        {/* Halftime line — absolute overlay, single source of truth for the line's position */}
+        <HalftimeLine />
 
       </div>{/* end grid */}
 
