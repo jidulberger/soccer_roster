@@ -47,6 +47,7 @@ export default function SoccerRotation() {
   const [editorDraft, setEditorDraft] = useState({ G: null, D: null, R1: null, R2: null, O: null });
   const [editorPickingSlot, setEditorPickingSlot] = useState(null); // "G"|"D"|"R1"|"R2"|"O"|null
   const [syncInfo, setSyncInfo] = useState({ storage: "?", savedAt: null, fetchedAt: null, error: null });
+  const [totalsTab, setTotalsTab] = useState("total"); // "this" | "sofar" | "total"
 
   useEffect(() => {
     fetch('/api/state')
@@ -153,6 +154,23 @@ export default function SoccerRotation() {
   const { games, totalShifts, totalPositions } = useMemo(() => {
     return generateRotation(seed, players, shiftExclusions, gameExclusions, shiftForceIns, lockedShifts, shiftForcePositions, goalieMode, shiftsPerGame, killedShifts);
   }, [seed, players, shiftExclusions, gameExclusions, shiftForceIns, lockedShifts, shiftForcePositions, goalieMode, shiftsPerGame, killedShifts]);
+
+  const displayedTotals = useMemo(() => {
+    const fromG = totalsTab === "this" ? activeGame : 0;
+    const toG = totalsTab === "total" ? 3 : activeGame;
+    const result = {};
+    players.forEach(p => { result[p.name] = { G: 0, D: 0, R: 0, O: 0, total: 0 }; });
+    for (let g = fromG; g <= toG; g++) {
+      (games[g] || []).forEach(shift => {
+        if (!shift || shift._killed) return;
+        const add = (name, pos) => {
+          if (name && result[name]) { result[name][pos]++; result[name].total++; }
+        };
+        add(shift.G, 'G'); add(shift.D, 'D'); add(shift.R1, 'R'); add(shift.R2, 'R'); add(shift.O, 'O');
+      });
+    }
+    return result;
+  }, [games, players, totalsTab, activeGame]);
 
   const excludeFromShift = useCallback((gameIdx, shiftIdx, playerName) => {
     saveToHistory();
@@ -612,7 +630,21 @@ export default function SoccerRotation() {
 
       {/* Tournament totals */}
       <div style={{ background: "#fff", borderRadius: "12px", border: "1px solid #e5e7eb", overflow: "hidden", marginBottom: "16px" }}>
-        <div style={{ padding: "10px 14px", background: "#fafafa", borderBottom: "1px solid #e5e7eb", fontSize: "12px", fontWeight: 600 }}>Tournament Totals</div>
+        <div style={{ padding: "8px 14px", background: "#fafafa", borderBottom: "1px solid #e5e7eb", display: "flex", alignItems: "center", gap: "8px", flexWrap: "wrap" }}>
+          <span style={{ fontSize: "12px", fontWeight: 700, color: "#1a1a2e", marginRight: "4px" }}>Totals</span>
+          {[
+            { key: "this",  label: `This Game (G${activeGame + 1})` },
+            { key: "sofar", label: activeGame === 0 ? "So Far" : `So Far (G1–G${activeGame + 1})` },
+            { key: "total", label: "Tournament" },
+          ].map(({ key, label }) => (
+            <button key={key} onClick={() => setTotalsTab(key)} style={{
+              padding: "4px 10px", borderRadius: "6px", fontSize: "10px", fontWeight: 700,
+              cursor: "pointer", border: "none", fontFamily: "'DM Sans'",
+              background: totalsTab === key ? "#1a1a2e" : "#efefef",
+              color: totalsTab === key ? "#fff" : "#666",
+            }}>{label}</button>
+          ))}
+        </div>
         <div style={{ display: "grid", gridTemplateColumns: "90px repeat(5,1fr) 50px", padding: "6px 0", fontSize: "10px", fontWeight: 600, color: "#999", textTransform: "uppercase", borderBottom: "1px solid #f0f0f0" }}>
           <div style={{ paddingLeft: "14px" }}>Player</div>
           <div style={{ textAlign: "center" }}>D</div><div style={{ textAlign: "center" }}>R</div>
@@ -620,7 +652,8 @@ export default function SoccerRotation() {
           <div style={{ textAlign: "center" }}>Field</div><div style={{ textAlign: "center" }}>Tot</div>
         </div>
         {players.map((p, i) => {
-          const pos = totalPositions[p.name]; const ft = pos.D + pos.R + pos.O; const tot = totalShifts[p.name];
+          const pos = displayedTotals[p.name] || { G: 0, D: 0, R: 0, O: 0, total: 0 };
+          const ft = pos.D + pos.R + pos.O;
           return <div key={p.name} style={{ display: "grid", gridTemplateColumns: "90px repeat(5,1fr) 50px",
             padding: "5px 0", fontSize: "12px", borderBottom: i < players.length - 1 ? "1px solid #f5f5f5" : "none",
             background: i % 2 === 0 ? "#fff" : "#fafbfc" }}>
@@ -630,7 +663,7 @@ export default function SoccerRotation() {
             <div style={{ textAlign: "center", color: POS_COLORS.O.bg, fontWeight: 600 }}>{pos.O}</div>
             <div style={{ textAlign: "center", color: POS_COLORS.G.bg, fontWeight: 600 }}>{pos.G}</div>
             <div style={{ textAlign: "center", fontWeight: 500 }}>{ft}</div>
-            <div style={{ textAlign: "center", fontWeight: 700 }}>{tot}</div>
+            <div style={{ textAlign: "center", fontWeight: 700 }}>{pos.total}</div>
           </div>;
         })}
       </div>
