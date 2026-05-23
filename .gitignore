@@ -1,0 +1,9 @@
+.next/
+out/
+node_modules/
+.env.local
+.env*.local
+npm-debug.log*
+yarn-debug.log*
+.vercel
+next-env.d.ts
