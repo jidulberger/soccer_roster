@@ -162,11 +162,10 @@ export default function SoccerRotation() {
     tabs: { display: "flex", gap: "6px", marginBottom: "12px" },
     tab: (on) => ({ flex: 1, padding: "9px 0", border: on ? "2px solid #1a1a2e" : "2px solid #e5e7eb", borderRadius: "8px",
       background: on ? "#1a1a2e" : "#fff", color: on ? "#fff" : "#1a1a2e", fontFamily: "'DM Sans'", fontWeight: 600, fontSize: "13px", cursor: "pointer" }),
-    // Single flat grid; halftime line is drawn as a position:absolute overlay
-    // (see <HalftimeLine /> below the cells) so it doesn't depend on any cell layout.
-    grid: { background: "#fff", borderRadius: "12px", border: "1px solid #e5e7eb", overflow: "hidden", marginBottom: "16px",
-      display: "grid", gridTemplateColumns: "82px repeat(8, minmax(0, 1fr))",
-      position: "relative" },
+    // Grid carries no marginBottom — that lives on the wrapper below so the
+    // absolute HalftimeLine and the grid share the exact same height.
+    grid: { background: "#fff", borderRadius: "12px", border: "1px solid #e5e7eb", overflow: "hidden",
+      display: "grid", gridTemplateColumns: "82px repeat(8, minmax(0, 1fr))" },
     // Shared pill geometry — every cell-content state (position badge, ✕ badge,
     // empty dash) has *identical* box dimensions. They differ only in color and
     // border style. The transparent 1px border on non-xBadges reserves the same
@@ -216,23 +215,6 @@ export default function SoccerRotation() {
   const cAvg  = (extra = {}) => ({ padding: "4px 2px", display: "flex", alignItems: "center", justifyContent: "center",
     overflow: "hidden", background: "#f8f7f4", borderTop: "2px solid #e5e7eb", ...extra });
 
-  // Halftime line: a position:absolute overlay placed at the exact midpoint of the
-  // shift columns. Because its x-position is computed by calc() from the container's
-  // own width — not derived from cell layout, fr fractions, or row context — it
-  // physically cannot render at different x-positions in different rows.
-  // 82px name column + half of remaining width, minus 1.5px to center the 3px line.
-  const HalftimeLine = () => (
-    <div style={{
-      position: "absolute",
-      top: 0,
-      bottom: 0,
-      left: "calc(82px + (100% - 82px) / 2 - 1.5px)",
-      width: "3px",
-      background: "#1a1a2e",
-      pointerEvents: "none",
-      zIndex: 2,
-    }} />
-  );
 
   if (!loaded) {
     return (
@@ -307,7 +289,21 @@ export default function SoccerRotation() {
         })}
       </div>
 
-      {/* ── Grid: single flat CSS Grid so all rows share one column-width calculation ── */}
+      {/* ── Grid wrapper: the halftime line lives OUTSIDE the grid so it can't be
+            clipped by overflow:hidden or affected by any grid stacking context. ── */}
+      <div style={{ position: "relative", marginBottom: "16px" }}>
+        {/* Halftime line — single absolute element, fixed at exactly the midpoint
+            of the shift columns. Cannot drift per row because it isn't per-row. */}
+        <div style={{
+          position: "absolute",
+          top: 0,
+          bottom: 0,
+          left: "calc(82px + (100% - 82px) / 2 - 1.5px)",
+          width: "3px",
+          background: "#1a1a2e",
+          pointerEvents: "none",
+          zIndex: 10,
+        }} />
       <div style={S.grid}>
 
         {/* Header row */}
@@ -401,10 +397,8 @@ export default function SoccerRotation() {
           </div>;
         })}
 
-        {/* Halftime line — absolute overlay, single source of truth for the line's position */}
-        <HalftimeLine />
-
       </div>{/* end grid */}
+      </div>{/* end grid wrapper */}
 
       {/* Legend */}
       <div style={{ display: "flex", gap: "10px", flexWrap: "wrap", marginBottom: "16px", alignItems: "center" }}>
