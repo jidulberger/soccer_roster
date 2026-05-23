@@ -135,10 +135,9 @@ export default function SoccerRotation() {
   const activeShiftCount = shiftsPerGame[activeGame] || 8;
   const shiftsPerHalf = activeShiftCount / 2;
 
-  // Visible (non-killed) shift indices for the active game, split by half.
-  // Original indices are preserved so renderShiftCell still reads from games[g][origIdx].
-  const visibleH1 = Array.from({ length: shiftsPerHalf }, (_, i) => i).filter(s => !killedShifts[`${activeGame}-${s}`]);
-  const visibleH2 = Array.from({ length: shiftsPerHalf }, (_, i) => i + shiftsPerHalf).filter(s => !killedShifts[`${activeGame}-${s}`]);
+  // Render ALL shifts for the active game; killed ones get a special look.
+  const visibleH1 = Array.from({ length: shiftsPerHalf }, (_, i) => i);
+  const visibleH2 = Array.from({ length: shiftsPerHalf }, (_, i) => i + shiftsPerHalf);
 
   const toggleKillShift = useCallback((gameIdx, shiftIdx) => {
     saveToHistory();
@@ -460,40 +459,21 @@ export default function SoccerRotation() {
         </span>
       </div>
 
-      {/* Killed shifts restore strip */}
-      {(() => {
-        const killed = Object.keys(killedShifts).filter(k => k.startsWith(`${activeGame}-`)).map(k => parseInt(k.split('-')[1], 10)).sort((a,b)=>a-b);
-        if (killed.length === 0) return null;
-        return (
-          <div style={{ display: "flex", gap: "6px", alignItems: "center", marginBottom: "8px", flexWrap: "wrap" }}>
-            <span style={{ fontSize: "10px", fontWeight: 600, color: "#888" }}>💀 Killed:</span>
-            {killed.map(s => {
-              const label = s < shiftsPerHalf ? `H1·${s + 1}` : `H2·${s - shiftsPerHalf + 1}`;
-              return (
-                <button key={s} onClick={() => toggleKillShift(activeGame, s)} title="Restore this shift"
-                  style={{ padding: "3px 8px", borderRadius: "6px", fontSize: "10px", fontWeight: 600, cursor: "pointer",
-                    fontFamily: "'DM Mono'", border: "1px solid #fca5a5", background: "#fef2f2", color: "#991b1b" }}>
-                  {label} ↺
-                </button>
-              );
-            })}
-          </div>
-        );
-      })()}
-
       {/* Rotation grid */}
       <div style={S.grid}>
 
         {/* Header row */}
         <div style={{ padding: "8px", fontSize: "10px", fontWeight: 600, color: "#999", textTransform: "uppercase",
           background: "#fafafa", borderBottom: "2px solid #e5e7eb" }}>Player</div>
-        {visibleH1.map((origIdx, i) => (
-          <div key={origIdx} style={cHdr()}>H1·{i + 1}</div>
-        ))}
+        {visibleH1.map((origIdx, i) => {
+          const k = !!killedShifts[`${activeGame}-${origIdx}`];
+          return <div key={origIdx} style={cHdr(k ? { color: "#991b1b", textDecoration: "line-through" } : {})}>H1·{i + 1}{k && " 💀"}</div>;
+        })}
         <div style={cDiv({ borderBottom: "2px solid #1a1a2e" })} />
-        {visibleH2.map((origIdx, i) => (
-          <div key={origIdx} style={cHdr()}>H2·{i + 1}</div>
-        ))}
+        {visibleH2.map((origIdx, i) => {
+          const k = !!killedShifts[`${activeGame}-${origIdx}`];
+          return <div key={origIdx} style={cHdr(k ? { color: "#991b1b", textDecoration: "line-through" } : {})}>H2·{i + 1}{k && " 💀"}</div>;
+        })}
 
         {/* Lock/Edit row — tap any cell to open the shift editor.
             Lock icon shows whether the shift is currently locked. */}
@@ -502,8 +482,8 @@ export default function SoccerRotation() {
         {visibleH1.map(s => {
           const lk = `${activeGame}-${s}`;
           return (
-            <div key={s} style={cLock({ cursor: "pointer" })} onClick={() => openShiftEditor(activeGame, s)}>
-              <span style={{ fontSize: "14px", userSelect: "none" }}>{lockedShifts[lk] ? "🔒" : "✏️"}</span>
+            <div key={s} style={cLock({ cursor: "pointer", background: killedShifts[lk] ? "#fef2f2" : undefined })} onClick={() => openShiftEditor(activeGame, s)}>
+              <span style={{ fontSize: "14px", userSelect: "none" }}>{killedShifts[lk] ? "💀" : lockedShifts[lk] ? "🔒" : "✏️"}</span>
             </div>
           );
         })}
@@ -511,8 +491,8 @@ export default function SoccerRotation() {
         {visibleH2.map(s => {
           const lk = `${activeGame}-${s}`;
           return (
-            <div key={s} style={cLock({ cursor: "pointer" })} onClick={() => openShiftEditor(activeGame, s)}>
-              <span style={{ fontSize: "14px", userSelect: "none" }}>{lockedShifts[lk] ? "🔒" : "✏️"}</span>
+            <div key={s} style={cLock({ cursor: "pointer", background: killedShifts[lk] ? "#fef2f2" : undefined })} onClick={() => openShiftEditor(activeGame, s)}>
+              <span style={{ fontSize: "14px", userSelect: "none" }}>{killedShifts[lk] ? "💀" : lockedShifts[lk] ? "🔒" : "✏️"}</span>
             </div>
           );
         })}
@@ -525,13 +505,15 @@ export default function SoccerRotation() {
           const bdr = { borderBottom: pi < players.length - 1 ? "1px solid #f0f0f0" : "none" };
 
           const renderShiftCell = (s) => {
+            const isKilled = !!killedShifts[`${g}-${s}`];
+            const killedBg = isKilled ? "#fef2f2" : bg;
             if (gameEx) {
-              return <div key={s} style={cData(bg, bdr)}>
+              return <div key={s} style={cData(killedBg, bdr)}>
                 <span style={{ ...S.xBadge, opacity: 0.4 }}>✕</span>
               </div>;
             }
             if (isShiftExcluded(g, s, player.name)) {
-              return <div key={s} style={cData(bg, bdr, { cursor: "pointer" })}
+              return <div key={s} style={cData(killedBg, bdr, { cursor: "pointer" })}
                 onClick={() => restoreFromShift(g, s, player.name)}>
                 <span style={S.xBadge}>✕</span>
               </div>;
@@ -542,8 +524,7 @@ export default function SoccerRotation() {
             const forcedPos = getForcedPos(g, s, player.name);
             const pickerHere = positionPicker?.g === g && positionPicker?.s === s && positionPicker?.playerName === player.name;
             if (pos) {
-              // On field — tap to open position picker (change position or remove)
-              return <div key={s} style={cData(bg, bdr, { cursor: "pointer", background: pickerHere ? "#f0f9ff" : bg })}
+              return <div key={s} style={cData(killedBg, bdr, { cursor: "pointer", background: pickerHere ? "#f0f9ff" : killedBg })}
                 onClick={() => {
                   if (pickerHere) setPositionPicker(null);
                   else setPositionPicker({ g, s, playerName: player.name, currentPos: pos });
@@ -553,18 +534,18 @@ export default function SoccerRotation() {
                   ...(forced ? { boxShadow: "0 0 0 2px #22c55e", borderRadius: "5px" } : {}),
                   ...(forcedPos ? { boxShadow: "0 0 0 2px #f59e0b", borderRadius: "5px" } : {}),
                   ...(pickerHere ? { outline: "2px solid #2563eb", outlineOffset: "1px" } : {}),
+                  ...(isKilled ? { opacity: 0.55, textDecoration: "line-through", filter: "grayscale(40%)" } : {}),
                 }}>
-                  {pos}
+                  {isKilled ? `💀${pos}` : pos}
                 </span>
               </div>;
             }
-            // Sitting — tap to open position picker (force into shift)
-            return <div key={s} style={cData(bg, bdr, { cursor: "pointer", background: pickerHere ? "#f0f9ff" : bg })}
+            return <div key={s} style={cData(killedBg, bdr, { cursor: "pointer", background: pickerHere ? "#f0f9ff" : killedBg })}
               onClick={() => {
                 if (pickerHere) setPositionPicker(null);
                 else setPositionPicker({ g, s, playerName: player.name, currentPos: null });
               }}>
-              <span style={{ ...S.sit, color: pickerHere ? "#2563eb" : "#ccc" }}>–</span>
+              <span style={{ ...S.sit, color: pickerHere ? "#2563eb" : (isKilled ? "#ddd" : "#ccc") }}>–</span>
             </div>;
           };
 
