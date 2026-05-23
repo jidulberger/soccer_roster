@@ -165,7 +165,7 @@ export default function SoccerRotation() {
     tab: (on) => ({ flex: 1, padding: "9px 0", border: on ? "2px solid #1a1a2e" : "2px solid #e5e7eb", borderRadius: "8px",
       background: on ? "#1a1a2e" : "#fff", color: on ? "#fff" : "#1a1a2e", fontFamily: "'DM Sans'", fontWeight: 600, fontSize: "13px", cursor: "pointer" }),
     grid: { background: "#fff", borderRadius: "12px", border: "1px solid #e5e7eb", overflow: "hidden", marginBottom: "16px" },
-    row: (alt) => ({ display: "grid", gridTemplateColumns: "82px repeat(8, 1fr)", background: alt ? "#fafbfc" : "#fff" }),
+    row: (alt) => ({ display: "grid", gridTemplateColumns: "82px repeat(8, minmax(0, 1fr))", background: alt ? "#fafbfc" : "#fff" }),
     hdrCell: (s) => ({ padding: "8px 4px", fontSize: "10px", fontWeight: 600, color: "#999", textAlign: "center",
       textTransform: "uppercase", letterSpacing: "0.5px", borderLeft: s === 5 ? "3px solid #1a1a2e" : "none" }),
     posCell: (s) => ({ padding: "4px 2px", display: "flex", alignItems: "center", justifyContent: "center",
