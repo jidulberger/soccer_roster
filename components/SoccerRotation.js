@@ -23,6 +23,7 @@ export default function SoccerRotation() {
   const [gameExclusions, setGameExclusions] = useState({});
   const [lockedShifts, setLockedShifts] = useState({});
   const [goalieMode, setGoalieMode] = useState("pairs"); // "pairs" (2-shift) | "halves" (4-shift)
+  const [shiftsPerGame, setShiftsPerGame] = useState(8); // 4 | 6 | 8
   const [players, setPlayers] = useState(INITIAL_PLAYERS);
   const [showRoster, setShowRoster] = useState(false);
   const [activeGame, setActiveGame] = useState(0);
@@ -46,6 +47,7 @@ export default function SoccerRotation() {
         if (state.gameExclusions) setGameExclusions(state.gameExclusions);
         if (state.lockedShifts) setLockedShifts(state.lockedShifts);
         if (state.goalieMode) setGoalieMode(state.goalieMode);
+        if (state.shiftsPerGame) setShiftsPerGame(state.shiftsPerGame);
         if (state.players) setPlayers(state.players);
       })
       .catch(() => {})
@@ -58,11 +60,11 @@ export default function SoccerRotation() {
       fetch('/api/state', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ seed, shiftExclusions, shiftForceIns, shiftForcePositions, gameExclusions, lockedShifts, goalieMode, players }),
+        body: JSON.stringify({ seed, shiftExclusions, shiftForceIns, shiftForcePositions, gameExclusions, lockedShifts, goalieMode, shiftsPerGame, players }),
       }).catch(() => {});
     }, 500);
     return () => clearTimeout(timer);
-  }, [seed, shiftExclusions, shiftForceIns, shiftForcePositions, gameExclusions, lockedShifts, goalieMode, players, loaded]);
+  }, [seed, shiftExclusions, shiftForceIns, shiftForcePositions, gameExclusions, lockedShifts, goalieMode, shiftsPerGame, players, loaded]);
 
   const handleSync = useCallback(async () => {
     try {
@@ -74,6 +76,7 @@ export default function SoccerRotation() {
       if (state.gameExclusions) setGameExclusions(state.gameExclusions);
       if (state.lockedShifts) setLockedShifts(state.lockedShifts);
       if (state.goalieMode) setGoalieMode(state.goalieMode);
+      if (state.shiftsPerGame) setShiftsPerGame(state.shiftsPerGame);
       if (state.players) setPlayers(state.players);
     } catch(e) {}
   }, []);
@@ -101,9 +104,11 @@ export default function SoccerRotation() {
     });
   }, []);
 
+  const shiftsPerHalf = shiftsPerGame / 2;
+
   const { games, totalShifts, totalPositions } = useMemo(() => {
-    return generateRotation(seed, players, shiftExclusions, gameExclusions, shiftForceIns, lockedShifts, shiftForcePositions, goalieMode);
-  }, [seed, players, shiftExclusions, gameExclusions, shiftForceIns, lockedShifts, shiftForcePositions, goalieMode]);
+    return generateRotation(seed, players, shiftExclusions, gameExclusions, shiftForceIns, lockedShifts, shiftForcePositions, goalieMode, shiftsPerGame);
+  }, [seed, players, shiftExclusions, gameExclusions, shiftForceIns, lockedShifts, shiftForcePositions, goalieMode, shiftsPerGame]);
 
   const excludeFromShift = useCallback((gameIdx, shiftIdx, playerName) => {
     saveToHistory();
@@ -269,7 +274,7 @@ export default function SoccerRotation() {
       background: on ? "#1a1a2e" : "#fff", color: on ? "#fff" : "#1a1a2e", fontFamily: "'DM Sans'", fontWeight: 600, fontSize: "13px", cursor: "pointer" }),
     grid: { background: "#fff", borderRadius: "12px", border: "1px solid #e5e7eb", overflow: "hidden",
       display: "grid",
-      gridTemplateColumns: "82px repeat(4, minmax(0, 1fr)) 3px repeat(4, minmax(0, 1fr))",
+      gridTemplateColumns: `82px repeat(${shiftsPerHalf}, minmax(0, 1fr)) 3px repeat(${shiftsPerHalf}, minmax(0, 1fr))`,
       marginBottom: "16px" },
     badge: (pos) => ({
       fontSize: "10px", fontFamily: "'DM Mono', monospace", fontWeight: 600,
@@ -388,44 +393,51 @@ export default function SoccerRotation() {
       </div>
 
 
+      {/* Shifts selector */}
+      <div style={{ display: "flex", gap: "4px", alignItems: "center", marginBottom: "8px" }}>
+        <span style={{ fontSize: "10px", fontWeight: 600, color: "#888", marginRight: "2px" }}>Shifts:</span>
+        {[4, 6, 8].map(n => (
+          <button key={n} onClick={() => setShiftsPerGame(n)} style={{
+            padding: "4px 12px", borderRadius: "6px", fontSize: "11px", fontWeight: 700,
+            cursor: "pointer", fontFamily: "'DM Mono'", border: "none",
+            background: shiftsPerGame === n ? "#1a1a2e" : "#f0f0f0",
+            color: shiftsPerGame === n ? "#fff" : "#666",
+          }}>{n}</button>
+        ))}
+      </div>
+
       {/* Rotation grid */}
       <div style={S.grid}>
 
         {/* Header row */}
         <div style={{ padding: "8px", fontSize: "10px", fontWeight: 600, color: "#999", textTransform: "uppercase",
           background: "#fafafa", borderBottom: "2px solid #e5e7eb" }}>Player</div>
-        {[1, 2, 3, 4].map(s => (
+        {Array.from({ length: shiftsPerHalf }, (_, i) => i + 1).map(s => (
           <div key={s} style={cHdr()}>H1·{s}</div>
         ))}
         <div style={cDiv({ borderBottom: "2px solid #1a1a2e" })} />
-        {[1, 2, 3, 4].map(s => (
-          <div key={s + 4} style={cHdr()}>H2·{s}</div>
+        {Array.from({ length: shiftsPerHalf }, (_, i) => i + 1).map(s => (
+          <div key={s + shiftsPerHalf} style={cHdr()}>H2·{s}</div>
         ))}
 
         {/* Lock/Edit row — tap any cell to open the shift editor.
             Lock icon shows whether the shift is currently locked. */}
         <div style={{ padding: "4px 8px", fontSize: "9px", fontWeight: 600, color: "#888",
           background: "#f0fdf4", borderBottom: "1px solid #e5e7eb" }}>Edit</div>
-        {[0, 1, 2, 3].map(s => {
+        {Array.from({ length: shiftsPerHalf }, (_, i) => i).map(s => {
           const lk = `${activeGame}-${s}`;
-          const isLocked = !!lockedShifts[lk];
           return (
             <div key={s} style={cLock({ cursor: "pointer" })} onClick={() => openShiftEditor(activeGame, s)}>
-              <span style={{ fontSize: "14px", userSelect: "none" }}>
-                {isLocked ? "🔒" : "✏️"}
-              </span>
+              <span style={{ fontSize: "14px", userSelect: "none" }}>{lockedShifts[lk] ? "🔒" : "✏️"}</span>
             </div>
           );
         })}
         <div style={cDiv({ borderBottom: "1px solid #1a1a2e" })} />
-        {[4, 5, 6, 7].map(s => {
+        {Array.from({ length: shiftsPerHalf }, (_, i) => i + shiftsPerHalf).map(s => {
           const lk = `${activeGame}-${s}`;
-          const isLocked = !!lockedShifts[lk];
           return (
             <div key={s} style={cLock({ cursor: "pointer" })} onClick={() => openShiftEditor(activeGame, s)}>
-              <span style={{ fontSize: "14px", userSelect: "none" }}>
-                {isLocked ? "🔒" : "✏️"}
-              </span>
+              <span style={{ fontSize: "14px", userSelect: "none" }}>{lockedShifts[lk] ? "🔒" : "✏️"}</span>
             </div>
           );
         })}
@@ -494,9 +506,9 @@ export default function SoccerRotation() {
                 </span>
               </div>
 
-              {[0, 1, 2, 3].map(renderShiftCell)}
+              {Array.from({ length: shiftsPerHalf }, (_, i) => i).map(renderShiftCell)}
               <div key="div" style={cDiv({ borderBottom: pi < players.length - 1 ? "1px solid #1a1a2e" : "none" })} />
-              {[4, 5, 6, 7].map(renderShiftCell)}
+              {Array.from({ length: shiftsPerHalf }, (_, i) => i + shiftsPerHalf).map(renderShiftCell)}
             </Fragment>
           );
         })}
@@ -504,30 +516,22 @@ export default function SoccerRotation() {
         {/* Field avg row */}
         <div style={{ padding: "8px", fontSize: "10px", fontWeight: 700, color: "#666",
           background: "#f8f7f4", borderTop: "2px solid #e5e7eb" }}>Field Avg</div>
-        {[0, 1, 2, 3].map(s => {
+        {Array.from({ length: shiftsPerHalf }, (_, i) => i).map(s => {
           const shift = games[activeGame]?.[s];
           if (!shift) return <div key={s} style={cAvg()}>–</div>;
           const fp = [shift.D, shift.R1, shift.R2, shift.O].filter(Boolean);
-          const avg = fp.length
-            ? fp.reduce((sum, n) => sum + (GRADE_VAL[players.find(p => p.name === n)?.grade] || 0), 0) / fp.length
-            : 0;
+          const avg = fp.length ? fp.reduce((sum, n) => sum + (GRADE_VAL[players.find(p => p.name === n)?.grade] || 0), 0) / fp.length : 0;
           const color = avg >= 2.3 ? "#22c55e" : avg >= 2.0 ? "#eab308" : "#ef4444";
-          return <div key={s} style={cAvg()}>
-            <span style={{ fontSize: "10px", fontFamily: "'DM Mono'", fontWeight: 700, color }}>{avg.toFixed(1)}</span>
-          </div>;
+          return <div key={s} style={cAvg()}><span style={{ fontSize: "10px", fontFamily: "'DM Mono'", fontWeight: 700, color }}>{avg.toFixed(1)}</span></div>;
         })}
         <div style={cDiv({ borderTop: "2px solid #1a1a2e" })} />
-        {[4, 5, 6, 7].map(s => {
+        {Array.from({ length: shiftsPerHalf }, (_, i) => i + shiftsPerHalf).map(s => {
           const shift = games[activeGame]?.[s];
           if (!shift) return <div key={s} style={cAvg()}>–</div>;
           const fp = [shift.D, shift.R1, shift.R2, shift.O].filter(Boolean);
-          const avg = fp.length
-            ? fp.reduce((sum, n) => sum + (GRADE_VAL[players.find(p => p.name === n)?.grade] || 0), 0) / fp.length
-            : 0;
+          const avg = fp.length ? fp.reduce((sum, n) => sum + (GRADE_VAL[players.find(p => p.name === n)?.grade] || 0), 0) / fp.length : 0;
           const color = avg >= 2.3 ? "#22c55e" : avg >= 2.0 ? "#eab308" : "#ef4444";
-          return <div key={s} style={cAvg()}>
-            <span style={{ fontSize: "10px", fontFamily: "'DM Mono'", fontWeight: 700, color }}>{avg.toFixed(1)}</span>
-          </div>;
+          return <div key={s} style={cAvg()}><span style={{ fontSize: "10px", fontFamily: "'DM Mono'", fontWeight: 700, color }}>{avg.toFixed(1)}</span></div>;
         })}
 
       </div>{/* end grid */}
@@ -579,13 +583,13 @@ export default function SoccerRotation() {
       {(() => {
         let minAvg = Infinity; let minLabel = "";
         for (let g = 0; g < 4; g++) {
-          for (let s = 0; s < 8; s++) {
+          for (let s = 0; s < shiftsPerGame; s++) {
             const shift = games[g]?.[s];
             if (!shift) continue;
             const fp = [shift.D, shift.R1, shift.R2, shift.O].filter(Boolean);
             if (fp.length === 0) continue;
             const avg = fp.reduce((sum, n) => sum + (GRADE_VAL[players.find(p => p.name === n)?.grade] || 0), 0) / fp.length;
-            if (avg < minAvg) { minAvg = avg; minLabel = `G${g + 1} ${s < 4 ? `H1·${s + 1}` : `H2·${s - 3}`}`; }
+            if (avg < minAvg) { minAvg = avg; minLabel = `G${g + 1} ${s < shiftsPerHalf ? `H1·${s + 1}` : `H2·${s - shiftsPerHalf + 1}`}`; }
           }
         }
         const color = minAvg >= 2.3 ? "#22c55e" : minAvg >= 2.0 ? "#eab308" : "#ef4444";
@@ -615,9 +619,9 @@ export default function SoccerRotation() {
               <span style={{ color: "#999", fontSize: "10px" }}>{minLabel}</span>
             </div>
             <button onClick={async () => {
-              const defaults = { seed: 0, shiftExclusions: {}, shiftForceIns: {}, shiftForcePositions: {}, gameExclusions: {}, lockedShifts: {}, goalieMode: "pairs", players: INITIAL_PLAYERS };
+              const defaults = { seed: 0, shiftExclusions: {}, shiftForceIns: {}, shiftForcePositions: {}, gameExclusions: {}, lockedShifts: {}, goalieMode: "pairs", shiftsPerGame: 8, players: INITIAL_PLAYERS };
               setSeed(0); setShiftExclusions({}); setGameExclusions({});
-              setShiftForceIns({}); setShiftForcePositions({}); setLockedShifts({}); setGoalieMode("pairs"); setPlayers(INITIAL_PLAYERS);
+              setShiftForceIns({}); setShiftForcePositions({}); setLockedShifts({}); setGoalieMode("pairs"); setShiftsPerGame(8); setPlayers(INITIAL_PLAYERS);
               try {
                 await fetch('/api/state', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(defaults) });
               } catch(e) {}
@@ -632,6 +636,7 @@ export default function SoccerRotation() {
         pickingSlot={editorPickingSlot}
         players={players}
         lockedShifts={lockedShifts}
+        shiftsPerHalf={shiftsPerHalf}
         S={S}
         onClose={() => setShiftEditorModal(null)}
         onSave={saveShiftEditor}
@@ -655,7 +660,7 @@ export default function SoccerRotation() {
                   {positionPicker.playerName}
                 </div>
                 <div style={{ fontSize: "11px", color: "#94a3b8", marginTop: "3px" }}>
-                  {positionPicker.s < 4 ? `H1·${positionPicker.s + 1}` : `H2·${positionPicker.s - 3}`}
+                  {positionPicker.s < shiftsPerHalf ? `H1·${positionPicker.s + 1}` : `H2·${positionPicker.s - shiftsPerHalf + 1}`}
                   {" · "}
                   {positionPicker.currentPos !== null ? "change position or remove" : "force into shift at…"}
                 </div>
@@ -672,7 +677,7 @@ export default function SoccerRotation() {
                   if (positionPicker.currentPos === "G" && pos !== "G") {
                     setShiftForcePositions(prev => {
                       const next = { ...prev };
-                      for (let si = 0; si < 8; si++) {
+                      for (let si = 0; si < shiftsPerGame; si++) {
                         if (si === positionPicker.s) continue;
                         const key = `${positionPicker.g}-${si}`;
                         if (next[key]?.[positionPicker.playerName] === "G") {
@@ -745,10 +750,11 @@ export default function SoccerRotation() {
 // ── Shift Editor Modal ──
 // Rendered via portal so position:fixed is relative to the viewport, not any
 // ancestor. Tap a column header (H1·1 … H2·4) to open.
-function ShiftEditorModal({ modal, draft, pickingSlot, players, lockedShifts, S, onClose, onSave, onUnlock, setDraft, setPickingSlot }) {
+function ShiftEditorModal({ modal, draft, pickingSlot, players, lockedShifts, shiftsPerHalf, S, onClose, onSave, onUnlock, setDraft, setPickingSlot }) {
   if (!modal) return null;
   const { g, s } = modal;
-  const shiftLabel = `Game ${g + 1} · ${s < 4 ? `H1·${s + 1}` : `H2·${s - 3}`}`;
+  const sph = shiftsPerHalf || 4;
+  const shiftLabel = `Game ${g + 1} · ${s < sph ? `H1·${s + 1}` : `H2·${s - sph + 1}`}`;
   const posSlots = [
     { slot: "G",  label: "Goalie",  pos: "G" },
     { slot: "D",  label: "Defense", pos: "D" },
