@@ -22,6 +22,7 @@ export default function SoccerRotation() {
   });
   const [gameExclusions, setGameExclusions] = useState({});
   const [lockedShifts, setLockedShifts] = useState({});
+  const [goalieMode, setGoalieMode] = useState("pairs"); // "pairs" (2-shift) | "halves" (4-shift)
   const [players, setPlayers] = useState(INITIAL_PLAYERS);
   const [showRoster, setShowRoster] = useState(false);
   const [activeGame, setActiveGame] = useState(0);
@@ -44,6 +45,7 @@ export default function SoccerRotation() {
         if (state.shiftForcePositions) setShiftForcePositions(state.shiftForcePositions);
         if (state.gameExclusions) setGameExclusions(state.gameExclusions);
         if (state.lockedShifts) setLockedShifts(state.lockedShifts);
+        if (state.goalieMode) setGoalieMode(state.goalieMode);
         if (state.players) setPlayers(state.players);
       })
       .catch(() => {})
@@ -56,11 +58,11 @@ export default function SoccerRotation() {
       fetch('/api/state', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ seed, shiftExclusions, shiftForceIns, shiftForcePositions, gameExclusions, lockedShifts, players }),
+        body: JSON.stringify({ seed, shiftExclusions, shiftForceIns, shiftForcePositions, gameExclusions, lockedShifts, goalieMode, players }),
       }).catch(() => {});
     }, 500);
     return () => clearTimeout(timer);
-  }, [seed, shiftExclusions, shiftForceIns, shiftForcePositions, gameExclusions, lockedShifts, players, loaded]);
+  }, [seed, shiftExclusions, shiftForceIns, shiftForcePositions, gameExclusions, lockedShifts, goalieMode, players, loaded]);
 
   const handleSync = useCallback(async () => {
     try {
@@ -71,6 +73,7 @@ export default function SoccerRotation() {
       if (state.shiftForcePositions) setShiftForcePositions(state.shiftForcePositions);
       if (state.gameExclusions) setGameExclusions(state.gameExclusions);
       if (state.lockedShifts) setLockedShifts(state.lockedShifts);
+      if (state.goalieMode) setGoalieMode(state.goalieMode);
       if (state.players) setPlayers(state.players);
     } catch(e) {}
   }, []);
@@ -99,8 +102,8 @@ export default function SoccerRotation() {
   }, []);
 
   const { games, totalShifts, totalPositions } = useMemo(() => {
-    return generateRotation(seed, players, shiftExclusions, gameExclusions, shiftForceIns, lockedShifts, shiftForcePositions);
-  }, [seed, players, shiftExclusions, gameExclusions, shiftForceIns, lockedShifts, shiftForcePositions]);
+    return generateRotation(seed, players, shiftExclusions, gameExclusions, shiftForceIns, lockedShifts, shiftForcePositions, goalieMode);
+  }, [seed, players, shiftExclusions, gameExclusions, shiftForceIns, lockedShifts, shiftForcePositions, goalieMode]);
 
   const excludeFromShift = useCallback((gameIdx, shiftIdx, playerName) => {
     saveToHistory();
@@ -590,6 +593,11 @@ export default function SoccerRotation() {
           <div style={{ display: "flex", gap: "8px", flexWrap: "wrap", alignItems: "center" }}>
             <button onClick={() => setSeed(s => s + 1)} style={S.btn()}>🔄 Regenerate</button>
             <button onClick={handleSync} style={S.btn("#2563eb")}>📡 Sync</button>
+            <button onClick={() => setGoalieMode(m => m === "pairs" ? "halves" : "pairs")}
+              title={goalieMode === "pairs" ? "Each goalie plays 2 shifts (current). Tap to switch to 4-shift halves." : "Each goalie owns a half (4 shifts). Tap to switch to 2-shift pairs."}
+              style={S.btn("#d97706")}>
+              🧤 {goalieMode === "pairs" ? "2-shift" : "Half"}
+            </button>
             {history.length > 0 && (
               <button onClick={undo} style={S.btn("#7c3aed")}>↩ Undo</button>
             )}
@@ -607,9 +615,9 @@ export default function SoccerRotation() {
               <span style={{ color: "#999", fontSize: "10px" }}>{minLabel}</span>
             </div>
             <button onClick={async () => {
-              const defaults = { seed: 0, shiftExclusions: {}, shiftForceIns: {}, shiftForcePositions: {}, gameExclusions: {}, lockedShifts: {}, players: INITIAL_PLAYERS };
+              const defaults = { seed: 0, shiftExclusions: {}, shiftForceIns: {}, shiftForcePositions: {}, gameExclusions: {}, lockedShifts: {}, goalieMode: "pairs", players: INITIAL_PLAYERS };
               setSeed(0); setShiftExclusions({}); setGameExclusions({});
-              setShiftForceIns({}); setShiftForcePositions({}); setLockedShifts({}); setPlayers(INITIAL_PLAYERS);
+              setShiftForceIns({}); setShiftForcePositions({}); setLockedShifts({}); setGoalieMode("pairs"); setPlayers(INITIAL_PLAYERS);
               try {
                 await fetch('/api/state', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(defaults) });
               } catch(e) {}
