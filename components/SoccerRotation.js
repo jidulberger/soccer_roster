@@ -173,12 +173,34 @@ export default function SoccerRotation() {
       if (list.length === 0) { const next = { ...prev }; delete next[key]; return next; }
       return { ...prev, [key]: list };
     });
-    // Also clear any forced position for this player
     setShiftForcePositions(prev => {
       if (!prev[key] || !prev[key][playerName]) return prev;
       const { [playerName]: _removed, ...rest } = prev[key];
       if (Object.keys(rest).length === 0) { const next = { ...prev }; delete next[key]; return next; }
       return { ...prev, [key]: rest };
+    });
+  }, [saveToHistory]);
+
+  // Remove player from shift: clears any force and adds to exclusions (one undo entry).
+  const removeFromShift = useCallback((gameIdx, shiftIdx, playerName) => {
+    saveToHistory();
+    const key = `${gameIdx}-${shiftIdx}`;
+    setShiftForceIns(prev => {
+      if (!prev[key]) return prev;
+      const list = prev[key].filter(n => n !== playerName);
+      if (list.length === 0) { const next = { ...prev }; delete next[key]; return next; }
+      return { ...prev, [key]: list };
+    });
+    setShiftForcePositions(prev => {
+      if (!prev[key] || !prev[key][playerName]) return prev;
+      const { [playerName]: _r, ...rest } = prev[key];
+      if (Object.keys(rest).length === 0) { const next = { ...prev }; delete next[key]; return next; }
+      return { ...prev, [key]: rest };
+    });
+    setShiftExclusions(prev => {
+      const list = [...(prev[key] || [])];
+      if (!list.includes(playerName)) list.push(playerName);
+      return { ...prev, [key]: list };
     });
   }, [saveToHistory]);
 
@@ -297,10 +319,6 @@ export default function SoccerRotation() {
     );
   }
 
-  // Label for position picker context
-  const pickerLabel = positionPicker
-    ? `${positionPicker.playerName} · ${positionPicker.s < 4 ? `H1·${positionPicker.s + 1}` : `H2·${positionPicker.s - 3}`}`
-    : "";
 
   return (
     <div style={S.root}>
@@ -308,8 +326,7 @@ export default function SoccerRotation() {
 
       <h1 style={{ fontSize: "20px", fontWeight: 700, margin: "0 0 2px", letterSpacing: "-0.5px" }}>⚽ Deathwalkers Roster Rotation</h1>
       <p style={{ fontSize: "11px", color: "#666", margin: "0 0 4px", lineHeight: 1.5 }}>
-        Tap <b>position</b> → remove from shift&nbsp;&nbsp;·&nbsp;&nbsp;
-        Tap <b>–</b> → force position&nbsp;&nbsp;·&nbsp;&nbsp;
+        Tap <b>badge</b> or <b>–</b> → set / change position&nbsp;&nbsp;·&nbsp;&nbsp;
         Tap <b style={{ color: "#991b1b" }}>✕</b> → undo&nbsp;&nbsp;·&nbsp;&nbsp;
         Tap <b>name</b> → out for game
       </p>
@@ -367,49 +384,6 @@ export default function SoccerRotation() {
         })}
       </div>
 
-      {/* ── Position picker bar ──
-          Appears when a sitting player's "–" cell is tapped.
-          Lets the coach force that player to a specific position for that shift. */}
-      {positionPicker && (
-        <div style={{
-          marginBottom: "8px", padding: "10px 12px",
-          background: "#1a1a2e", borderRadius: "10px",
-          display: "flex", gap: "6px", flexWrap: "wrap", alignItems: "center",
-        }}>
-          <span style={{ fontSize: "11px", fontWeight: 600, color: "#e2e8f0", marginRight: "4px", whiteSpace: "nowrap" }}>
-            Force {pickerLabel}:
-          </span>
-          {["G", "D", "R", "O"].map(pos => (
-            <button key={pos} onClick={() => {
-              forceIntoShift(positionPicker.g, positionPicker.s, positionPicker.playerName, pos);
-              setPositionPicker(null);
-            }} style={{
-              padding: "5px 10px", borderRadius: "6px", fontFamily: "'DM Mono'", fontWeight: 700,
-              fontSize: "12px", cursor: "pointer", border: "none",
-              background: POS_COLORS[pos].bg, color: POS_COLORS[pos].text,
-            }}>
-              {pos === "G" ? "🧤 G" : pos}
-            </button>
-          ))}
-          <button onClick={() => {
-            forceIntoShift(positionPicker.g, positionPicker.s, positionPicker.playerName, null);
-            setPositionPicker(null);
-          }} style={{
-            padding: "5px 10px", borderRadius: "6px", fontFamily: "'DM Sans'", fontWeight: 600,
-            fontSize: "11px", cursor: "pointer", border: "1px solid #475569",
-            background: "transparent", color: "#94a3b8",
-          }}>
-            Any
-          </button>
-          <button onClick={() => setPositionPicker(null)} style={{
-            padding: "5px 8px", borderRadius: "6px", fontFamily: "'DM Sans'", fontWeight: 600,
-            fontSize: "11px", cursor: "pointer", border: "none",
-            background: "transparent", color: "#64748b", marginLeft: "auto",
-          }}>
-            ✕
-          </button>
-        </div>
-      )}
 
       {/* Rotation grid */}
       <div style={S.grid}>
@@ -476,31 +450,31 @@ export default function SoccerRotation() {
             const pos = shift ? getPos(shift, player.name) : "";
             const forced = isShiftForced(g, s, player.name);
             const forcedPos = getForcedPos(g, s, player.name);
+            const pickerHere = positionPicker?.g === g && positionPicker?.s === s && positionPicker?.playerName === player.name;
             if (pos) {
-              // On field — tap to remove from shift (also clears any force)
-              return <div key={s} style={cData(bg, bdr, { cursor: "pointer" })}
+              // On field — tap to open position picker (change position or remove)
+              return <div key={s} style={cData(bg, bdr, { cursor: "pointer", background: pickerHere ? "#f0f9ff" : bg })}
                 onClick={() => {
-                  if (forced) unforceFromShift(g, s, player.name);
-                  else excludeFromShift(g, s, player.name);
+                  if (pickerHere) setPositionPicker(null);
+                  else setPositionPicker({ g, s, playerName: player.name, currentPos: pos });
                 }}>
                 <span style={{
                   ...S.badge(pos),
                   ...(forced ? { boxShadow: "0 0 0 2px #22c55e", borderRadius: "5px" } : {}),
-                  // Gold ring if forced to a specific position
                   ...(forcedPos ? { boxShadow: "0 0 0 2px #f59e0b", borderRadius: "5px" } : {}),
+                  ...(pickerHere ? { outline: "2px solid #2563eb", outlineOffset: "1px" } : {}),
                 }}>
                   {pos}
                 </span>
               </div>;
             }
-            // Sitting — tap to open position picker
-            const isPickerOpen = positionPicker && positionPicker.g === g && positionPicker.s === s && positionPicker.playerName === player.name;
-            return <div key={s} style={cData(bg, bdr, { cursor: "pointer", background: isPickerOpen ? "#f0f9ff" : bg })}
+            // Sitting — tap to open position picker (force into shift)
+            return <div key={s} style={cData(bg, bdr, { cursor: "pointer", background: pickerHere ? "#f0f9ff" : bg })}
               onClick={() => {
-                if (isPickerOpen) { setPositionPicker(null); }
-                else { setPositionPicker({ g, s, playerName: player.name }); }
+                if (pickerHere) setPositionPicker(null);
+                else setPositionPicker({ g, s, playerName: player.name, currentPos: null });
               }}>
-              <span style={{ ...S.sit, color: isPickerOpen ? "#2563eb" : "#ccc" }}>–</span>
+              <span style={{ ...S.sit, color: pickerHere ? "#2563eb" : "#ccc" }}>–</span>
             </div>;
           };
 
@@ -518,7 +492,7 @@ export default function SoccerRotation() {
               </div>
 
               {[0, 1, 2, 3].map(renderShiftCell)}
-              <div key="div" style={cDiv(bdr)} />
+              <div key="div" style={cDiv({ borderBottom: pi < players.length - 1 ? "1px solid #1a1a2e" : "none" })} />
               {[4, 5, 6, 7].map(renderShiftCell)}
             </Fragment>
           );
@@ -661,6 +635,84 @@ export default function SoccerRotation() {
         setDraft={setEditorDraft}
         setPickingSlot={setEditorPickingSlot}
       />
+
+      {/* Position picker — fixed bottom sheet, always visible regardless of scroll */}
+      {positionPicker && createPortal(
+        <>
+          <div onClick={() => setPositionPicker(null)} style={{ position: "fixed", inset: 0, zIndex: 998, background: "rgba(0,0,0,0.45)" }} />
+          <div style={{ position: "fixed", bottom: 0, left: 0, right: 0, zIndex: 999, background: "#1a1a2e", borderRadius: "20px 20px 0 0", padding: "20px 16px 36px", boxShadow: "0 -4px 32px rgba(0,0,0,0.5)" }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: "16px" }}>
+              <div>
+                <div style={{ fontSize: "16px", fontWeight: 700, color: "#f1f5f9", fontFamily: "'DM Sans'" }}>
+                  {positionPicker.playerName}
+                </div>
+                <div style={{ fontSize: "11px", color: "#94a3b8", marginTop: "3px" }}>
+                  {positionPicker.s < 4 ? `H1·${positionPicker.s + 1}` : `H2·${positionPicker.s - 3}`}
+                  {" · "}
+                  {positionPicker.currentPos !== null ? "change position or remove" : "force into shift at…"}
+                </div>
+              </div>
+              <button onClick={() => setPositionPicker(null)} style={{ background: "none", border: "none", color: "#64748b", fontSize: "26px", cursor: "pointer", lineHeight: 1, padding: "0 4px", marginTop: "-2px" }}>×</button>
+            </div>
+
+            {/* Position buttons */}
+            <div style={{ display: "flex", gap: "10px", marginBottom: "10px" }}>
+              {["G", "D", "R", "O"].map(pos => (
+                <button key={pos} onClick={() => {
+                  forceIntoShift(positionPicker.g, positionPicker.s, positionPicker.playerName, pos);
+                  setPositionPicker(null);
+                }} style={{
+                  flex: 1, padding: "14px 0", borderRadius: "10px",
+                  fontFamily: "'DM Mono'", fontWeight: 700, fontSize: "16px",
+                  cursor: "pointer", border: "none",
+                  background: POS_COLORS[pos].bg, color: POS_COLORS[pos].text,
+                }}>
+                  {pos}
+                </button>
+              ))}
+            </div>
+
+            {/* Secondary actions */}
+            <div style={{ display: "flex", gap: "8px" }}>
+              {positionPicker.currentPos === null && (
+                <button onClick={() => {
+                  forceIntoShift(positionPicker.g, positionPicker.s, positionPicker.playerName, null);
+                  setPositionPicker(null);
+                }} style={{
+                  flex: 1, padding: "11px 0", borderRadius: "8px",
+                  fontFamily: "'DM Sans'", fontWeight: 600, fontSize: "12px",
+                  cursor: "pointer", border: "1px solid #475569",
+                  background: "transparent", color: "#94a3b8",
+                }}>
+                  Any position
+                </button>
+              )}
+              {positionPicker.currentPos !== null && (
+                <button onClick={() => {
+                  removeFromShift(positionPicker.g, positionPicker.s, positionPicker.playerName);
+                  setPositionPicker(null);
+                }} style={{
+                  flex: 1, padding: "11px 0", borderRadius: "8px",
+                  fontFamily: "'DM Sans'", fontWeight: 600, fontSize: "12px",
+                  cursor: "pointer", border: "1px solid #ef4444",
+                  background: "transparent", color: "#ef4444",
+                }}>
+                  Remove from shift
+                </button>
+              )}
+              <button onClick={() => setPositionPicker(null)} style={{
+                padding: "11px 20px", borderRadius: "8px",
+                fontFamily: "'DM Sans'", fontWeight: 600, fontSize: "12px",
+                cursor: "pointer", border: "1px solid #334155",
+                background: "transparent", color: "#64748b",
+              }}>
+                Cancel
+              </button>
+            </div>
+          </div>
+        </>,
+        document.body
+      )}
     </div>
   );
 }
