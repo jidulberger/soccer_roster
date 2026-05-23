@@ -162,15 +162,12 @@ export default function SoccerRotation() {
     tabs: { display: "flex", gap: "6px", marginBottom: "12px" },
     tab: (on) => ({ flex: 1, padding: "9px 0", border: on ? "2px solid #1a1a2e" : "2px solid #e5e7eb", borderRadius: "8px",
       background: on ? "#1a1a2e" : "#fff", color: on ? "#fff" : "#1a1a2e", fontFamily: "'DM Sans'", fontWeight: 600, fontSize: "13px", cursor: "pointer" }),
-    // Grid carries no marginBottom — that lives on the wrapper below so the
-    // absolute HalftimeLine and the grid share the exact same height.
+    // The halftime divider is a real 3px grid column — column 6 of 10.
+    // It cannot drift because CSS Grid guarantees every row occupies the same column tracks.
     grid: { background: "#fff", borderRadius: "12px", border: "1px solid #e5e7eb", overflow: "hidden",
-      display: "grid", gridTemplateColumns: "82px repeat(8, minmax(0, 1fr))" },
-    // Shared pill geometry — every cell-content state (position badge, ✕ badge,
-    // empty dash) has *identical* box dimensions. They differ only in color and
-    // border style. The transparent 1px border on non-xBadges reserves the same
-    // space the xBadge's dashed border takes, so no state is wider than another.
-    // box-sizing: border-box + minWidth keeps width predictable on narrow screens.
+      display: "grid",
+      gridTemplateColumns: "82px repeat(4, minmax(0, 1fr)) 3px repeat(4, minmax(0, 1fr))",
+      marginBottom: "16px" },
     badge: (pos) => ({
       fontSize: "10px", fontFamily: "'DM Mono', monospace", fontWeight: 600,
       padding: "2px 4px", borderRadius: "4px",
@@ -203,8 +200,6 @@ export default function SoccerRotation() {
       fontFamily: "'DM Sans'", fontWeight: 600, fontSize: "12px", cursor: "pointer" }),
   };
 
-  // Cell style builders — the halftime line is its own grid column (the 3px divider),
-  // so no boxShadow trickery is needed on data cells.
   const cHdr  = (extra = {}) => ({ padding: "8px 2px", fontSize: "10px", fontWeight: 600, color: "#999",
     textAlign: "center", textTransform: "uppercase", letterSpacing: "0.5px",
     background: "#fafafa", borderBottom: "2px solid #e5e7eb", ...extra });
@@ -214,6 +209,8 @@ export default function SoccerRotation() {
     overflow: "hidden", background: bg, ...bdr, ...extra });
   const cAvg  = (extra = {}) => ({ padding: "4px 2px", display: "flex", alignItems: "center", justifyContent: "center",
     overflow: "hidden", background: "#f8f7f4", borderTop: "2px solid #e5e7eb", ...extra });
+  // Halftime divider column cells — always dark, always the exact same grid column.
+  const cDiv  = (extra = {}) => ({ background: "#1a1a2e", ...extra });
 
 
   if (!loaded) {
@@ -289,34 +286,40 @@ export default function SoccerRotation() {
         })}
       </div>
 
-      {/* ── Grid wrapper: the halftime line lives OUTSIDE the grid so it can't be
-            clipped by overflow:hidden or affected by any grid stacking context. ── */}
-      <div style={{ position: "relative", marginBottom: "16px" }}>
-        {/* Halftime line — single absolute element, fixed at exactly the midpoint
-            of the shift columns. Cannot drift per row because it isn't per-row. */}
-        <div style={{
-          position: "absolute",
-          top: 0,
-          bottom: 0,
-          left: "calc(82px + (100% - 82px) / 2 - 1.5px)",
-          width: "3px",
-          background: "#1a1a2e",
-          pointerEvents: "none",
-          zIndex: 10,
-        }} />
+      {/* ── Rotation grid ──
+          Column layout: [name 82px] [H1·1] [H1·2] [H1·3] [H1·4] [DIVIDER 3px] [H2·1] [H2·2] [H2·3] [H2·4]
+          The divider is column 6 of 10 — a real grid track, not an overlay.
+          Every row places a dark cell in column 6, so the divider is pixel-perfect
+          across all rows regardless of what badges appear in other cells. */}
       <div style={S.grid}>
 
         {/* Header row */}
         <div style={{ padding: "8px", fontSize: "10px", fontWeight: 600, color: "#999", textTransform: "uppercase",
           background: "#fafafa", borderBottom: "2px solid #e5e7eb" }}>Player</div>
-        {[1, 2, 3, 4, 5, 6, 7, 8].map(s => (
-          <div key={s} style={cHdr()}>{s <= 4 ? `H1·${s}` : `H2·${s - 4}`}</div>
+        {[1, 2, 3, 4].map(s => (
+          <div key={s} style={cHdr()}>H1·{s}</div>
+        ))}
+        <div style={cDiv({ borderBottom: "2px solid #1a1a2e" })} />
+        {[1, 2, 3, 4].map(s => (
+          <div key={s + 4} style={cHdr()}>H2·{s}</div>
         ))}
 
         {/* Lock row */}
         <div style={{ padding: "4px 8px", fontSize: "9px", fontWeight: 600, color: "#888",
           background: "#f0fdf4", borderBottom: "1px solid #e5e7eb" }}>Lock</div>
-        {[0, 1, 2, 3, 4, 5, 6, 7].map(s => {
+        {[0, 1, 2, 3].map(s => {
+          const lk = `${activeGame}-${s}`;
+          const isLocked = !!lockedShifts[lk];
+          return (
+            <div key={s} style={cLock({ cursor: "pointer" })} onClick={() => toggleLockShift(activeGame, s)}>
+              <span style={{ fontSize: "12px", userSelect: "none", opacity: isLocked ? 1 : 0.3 }}>
+                {isLocked ? "🔒" : "🔓"}
+              </span>
+            </div>
+          );
+        })}
+        <div style={cDiv({ borderBottom: "1px solid #1a1a2e" })} />
+        {[4, 5, 6, 7].map(s => {
           const lk = `${activeGame}-${s}`;
           const isLocked = !!lockedShifts[lk];
           return (
@@ -335,6 +338,35 @@ export default function SoccerRotation() {
           const bg = pi % 2 !== 0 ? "#fafbfc" : "#fff";
           const bdr = { borderBottom: pi < players.length - 1 ? "1px solid #f0f0f0" : "none" };
 
+          const renderShiftCell = (s) => {
+            if (gameEx) {
+              return <div key={s} style={cData(bg, bdr)}>
+                <span style={{ ...S.xBadge, opacity: 0.4 }}>✕</span>
+              </div>;
+            }
+            if (isShiftExcluded(g, s, player.name)) {
+              return <div key={s} style={cData(bg, bdr, { cursor: "pointer" })}
+                onClick={() => restoreFromShift(g, s, player.name)}>
+                <span style={S.xBadge}>✕</span>
+              </div>;
+            }
+            const shift = games[g]?.[s];
+            const pos = shift ? getPos(shift, player.name) : "";
+            const forced = isShiftForced(g, s, player.name);
+            if (pos) {
+              return <div key={s} style={cData(bg, bdr, { cursor: "pointer" })}
+                onClick={() => forced ? unforceFromShift(g, s, player.name) : excludeFromShift(g, s, player.name)}>
+                <span style={{ ...S.badge(pos), ...(forced ? { boxShadow: "0 0 0 2px #22c55e", borderRadius: "5px" } : {}) }}>
+                  {pos}
+                </span>
+              </div>;
+            }
+            return <div key={s} style={cData(bg, bdr, { cursor: "pointer" })}
+              onClick={() => forceIntoShift(g, s, player.name)}>
+              <span style={S.sit}>–</span>
+            </div>;
+          };
+
           return (
             <Fragment key={player.name}>
               {/* Name cell */}
@@ -348,35 +380,14 @@ export default function SoccerRotation() {
                 </span>
               </div>
 
-              {/* Shift cells */}
-              {[0, 1, 2, 3, 4, 5, 6, 7].map(s => {
-                if (gameEx) {
-                  return <div key={s} style={cData(bg, bdr)}>
-                    <span style={{ ...S.xBadge, opacity: 0.4 }}>✕</span>
-                  </div>;
-                }
-                if (isShiftExcluded(g, s, player.name)) {
-                  return <div key={s} style={cData(bg, bdr, { cursor: "pointer" })}
-                    onClick={() => restoreFromShift(g, s, player.name)}>
-                    <span style={S.xBadge}>✕</span>
-                  </div>;
-                }
-                const shift = games[g]?.[s];
-                const pos = shift ? getPos(shift, player.name) : "";
-                const forced = isShiftForced(g, s, player.name);
-                if (pos) {
-                  return <div key={s} style={cData(bg, bdr, { cursor: "pointer" })}
-                    onClick={() => forced ? unforceFromShift(g, s, player.name) : excludeFromShift(g, s, player.name)}>
-                    <span style={{ ...S.badge(pos), ...(forced ? { boxShadow: "0 0 0 2px #22c55e", borderRadius: "5px" } : {}) }}>
-                      {pos}
-                    </span>
-                  </div>;
-                }
-                return <div key={s} style={cData(bg, bdr, { cursor: "pointer" })}
-                  onClick={() => forceIntoShift(g, s, player.name)}>
-                  <span style={S.sit}>–</span>
-                </div>;
-              })}
+              {/* First half */}
+              {[0, 1, 2, 3].map(renderShiftCell)}
+
+              {/* Halftime divider cell */}
+              <div key="div" style={cDiv(bdr)} />
+
+              {/* Second half */}
+              {[4, 5, 6, 7].map(renderShiftCell)}
             </Fragment>
           );
         })}
@@ -384,7 +395,20 @@ export default function SoccerRotation() {
         {/* Field avg row */}
         <div style={{ padding: "8px", fontSize: "10px", fontWeight: 700, color: "#666",
           background: "#f8f7f4", borderTop: "2px solid #e5e7eb" }}>Field Avg</div>
-        {[0, 1, 2, 3, 4, 5, 6, 7].map(s => {
+        {[0, 1, 2, 3].map(s => {
+          const shift = games[activeGame]?.[s];
+          if (!shift) return <div key={s} style={cAvg()}>–</div>;
+          const fp = [shift.D, shift.R1, shift.R2, shift.O].filter(Boolean);
+          const avg = fp.length
+            ? fp.reduce((sum, n) => sum + (GRADE_VAL[players.find(p => p.name === n)?.grade] || 0), 0) / fp.length
+            : 0;
+          const color = avg >= 2.3 ? "#22c55e" : avg >= 2.0 ? "#eab308" : "#ef4444";
+          return <div key={s} style={cAvg()}>
+            <span style={{ fontSize: "10px", fontFamily: "'DM Mono'", fontWeight: 700, color }}>{avg.toFixed(1)}</span>
+          </div>;
+        })}
+        <div style={cDiv({ borderTop: "2px solid #1a1a2e" })} />
+        {[4, 5, 6, 7].map(s => {
           const shift = games[activeGame]?.[s];
           if (!shift) return <div key={s} style={cAvg()}>–</div>;
           const fp = [shift.D, shift.R1, shift.R2, shift.O].filter(Boolean);
@@ -398,7 +422,6 @@ export default function SoccerRotation() {
         })}
 
       </div>{/* end grid */}
-      </div>{/* end grid wrapper */}
 
       {/* Legend */}
       <div style={{ display: "flex", gap: "10px", flexWrap: "wrap", marginBottom: "16px", alignItems: "center" }}>
