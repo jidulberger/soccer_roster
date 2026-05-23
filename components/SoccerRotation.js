@@ -387,23 +387,24 @@ export default function SoccerRotation() {
         <div style={{ padding: "8px", fontSize: "10px", fontWeight: 600, color: "#999", textTransform: "uppercase",
           background: "#fafafa", borderBottom: "2px solid #e5e7eb" }}>Player</div>
         {[1, 2, 3, 4].map(s => (
-          <div key={s} style={{ ...cHdr(), cursor: "pointer" }} onClick={() => openShiftEditor(activeGame, s - 1)}>H1·{s}</div>
+          <div key={s} style={cHdr()}>H1·{s}</div>
         ))}
         <div style={cDiv({ borderBottom: "2px solid #1a1a2e" })} />
         {[1, 2, 3, 4].map(s => (
-          <div key={s + 4} style={{ ...cHdr(), cursor: "pointer" }} onClick={() => openShiftEditor(activeGame, s + 3)}>H2·{s}</div>
+          <div key={s + 4} style={cHdr()}>H2·{s}</div>
         ))}
 
-        {/* Lock row */}
+        {/* Lock/Edit row — tap any cell to open the shift editor.
+            Lock icon shows whether the shift is currently locked. */}
         <div style={{ padding: "4px 8px", fontSize: "9px", fontWeight: 600, color: "#888",
-          background: "#f0fdf4", borderBottom: "1px solid #e5e7eb" }}>Lock</div>
+          background: "#f0fdf4", borderBottom: "1px solid #e5e7eb" }}>Edit</div>
         {[0, 1, 2, 3].map(s => {
           const lk = `${activeGame}-${s}`;
           const isLocked = !!lockedShifts[lk];
           return (
-            <div key={s} style={cLock({ cursor: "pointer" })} onClick={() => toggleLockShift(activeGame, s)}>
-              <span style={{ fontSize: "12px", userSelect: "none", opacity: isLocked ? 1 : 0.3 }}>
-                {isLocked ? "🔒" : "🔓"}
+            <div key={s} style={cLock({ cursor: "pointer" })} onClick={() => openShiftEditor(activeGame, s)}>
+              <span style={{ fontSize: "14px", userSelect: "none" }}>
+                {isLocked ? "🔒" : "✏️"}
               </span>
             </div>
           );
@@ -413,9 +414,9 @@ export default function SoccerRotation() {
           const lk = `${activeGame}-${s}`;
           const isLocked = !!lockedShifts[lk];
           return (
-            <div key={s} style={cLock({ cursor: "pointer" })} onClick={() => toggleLockShift(activeGame, s)}>
-              <span style={{ fontSize: "12px", userSelect: "none", opacity: isLocked ? 1 : 0.3 }}>
-                {isLocked ? "🔒" : "🔓"}
+            <div key={s} style={cLock({ cursor: "pointer" })} onClick={() => openShiftEditor(activeGame, s)}>
+              <span style={{ fontSize: "14px", userSelect: "none" }}>
+                {isLocked ? "🔒" : "✏️"}
               </span>
             </div>
           );
