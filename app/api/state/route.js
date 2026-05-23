@@ -9,6 +9,6 @@ export async function GET() {
 
 export async function POST(request) {
   const state = await request.json()
-  await setState(state)
-  return Response.json({ ok: true }, { headers: NO_CACHE })
+  const result = await setState(state)
+  return Response.json({ ok: true, ...result }, { headers: NO_CACHE })
 }

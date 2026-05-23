@@ -35,6 +35,7 @@ export default function SoccerRotation() {
   const [shiftEditorModal, setShiftEditorModal] = useState(null); // { g, s } | null
   const [editorDraft, setEditorDraft] = useState({ G: null, D: null, R1: null, R2: null, O: null });
   const [editorPickingSlot, setEditorPickingSlot] = useState(null); // "G"|"D"|"R1"|"R2"|"O"|null
+  const [syncInfo, setSyncInfo] = useState({ storage: "?", savedAt: null, fetchedAt: null });
 
   useEffect(() => {
     fetch('/api/state')
@@ -49,6 +50,7 @@ export default function SoccerRotation() {
         if (state.goalieMode) setGoalieMode(state.goalieMode);
         if (state.shiftsPerGame) setShiftsPerGame(state.shiftsPerGame);
         if (state.players) setPlayers(state.players);
+        setSyncInfo({ storage: state._storage || "?", savedAt: state._savedAt || null, fetchedAt: Date.now() });
       })
       .catch(() => {})
       .finally(() => setLoaded(true));
@@ -61,6 +63,8 @@ export default function SoccerRotation() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ seed, shiftExclusions, shiftForceIns, shiftForcePositions, gameExclusions, lockedShifts, goalieMode, shiftsPerGame, players }),
+      }).then(r => r.json()).then(j => {
+        setSyncInfo(prev => ({ ...prev, storage: j.storage || prev.storage, savedAt: j.savedAt || prev.savedAt }));
       }).catch(() => {});
     }, 500);
     return () => clearTimeout(timer);
@@ -78,6 +82,7 @@ export default function SoccerRotation() {
       if (state.goalieMode) setGoalieMode(state.goalieMode);
       if (state.shiftsPerGame) setShiftsPerGame(state.shiftsPerGame);
       if (state.players) setPlayers(state.players);
+      setSyncInfo({ storage: state._storage || "?", savedAt: state._savedAt || null, fetchedAt: Date.now() });
     } catch(e) {}
   }, []);
 
@@ -597,6 +602,17 @@ export default function SoccerRotation() {
           <div style={{ display: "flex", gap: "8px", flexWrap: "wrap", alignItems: "center" }}>
             <button onClick={() => setSeed(s => s + 1)} style={S.btn()}>🔄 Regenerate</button>
             <button onClick={handleSync} style={S.btn("#2563eb")}>📡 Sync</button>
+            <div title={`Backend: ${syncInfo.storage}. Saved: ${syncInfo.savedAt ? new Date(syncInfo.savedAt).toLocaleTimeString() : "—"}. Fetched: ${syncInfo.fetchedAt ? new Date(syncInfo.fetchedAt).toLocaleTimeString() : "—"}.`}
+              style={{ display: "flex", alignItems: "center", gap: "5px", padding: "6px 10px", background: "#f9fafb", borderRadius: "8px", border: "1px solid #e5e7eb", fontSize: "10px", fontFamily: "'DM Mono'" }}>
+              <span style={{
+                width: "8px", height: "8px", borderRadius: "50%",
+                background: syncInfo.storage === "blob" ? "#22c55e" : syncInfo.storage.startsWith("blob") ? "#eab308" : "#ef4444",
+              }} />
+              <span style={{ color: "#666", fontWeight: 600 }}>{syncInfo.storage}</span>
+              {syncInfo.savedAt && (
+                <span style={{ color: "#999" }}>· {new Date(syncInfo.savedAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" })}</span>
+              )}
+            </div>
             <button onClick={() => setGoalieMode(m => m === "pairs" ? "halves" : "pairs")}
               title={goalieMode === "pairs" ? "Each goalie plays 2 shifts (current). Tap to switch to 4-shift halves." : "Each goalie owns a half (4 shifts). Tap to switch to 2-shift pairs."}
               style={S.btn("#d97706")}>
