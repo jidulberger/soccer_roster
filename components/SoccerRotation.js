@@ -640,9 +640,10 @@ export default function SoccerRotation() {
                 background: syncInfo.storage === "blob" ? "#22c55e" : syncInfo.storage.startsWith("blob") ? "#eab308" : "#ef4444",
               }} />
               <span style={{ color: "#666", fontWeight: 600 }}>{syncInfo.storage}</span>
-              {syncInfo.savedAt && (
-                <span style={{ color: "#999" }}>· {new Date(syncInfo.savedAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" })}</span>
-              )}
+              <span style={{ color: "#999" }}>
+                · save {syncInfo.savedAt ? new Date(syncInfo.savedAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" }) : "—"}
+                {" · fetch "}{syncInfo.fetchedAt ? new Date(syncInfo.fetchedAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" }) : "—"}
+              </span>
             </div>
             <button onClick={() => setGoalieMode(m => m === "pairs" ? "halves" : "pairs")}
               title={goalieMode === "pairs" ? "Each goalie plays 2 shifts (current). Tap to switch to 4-shift halves." : "Each goalie owns a half (4 shifts). Tap to switch to 2-shift pairs."}
