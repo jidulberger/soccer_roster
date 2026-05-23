@@ -162,9 +162,10 @@ export default function SoccerRotation() {
     tabs: { display: "flex", gap: "6px", marginBottom: "12px" },
     tab: (on) => ({ flex: 1, padding: "9px 0", border: on ? "2px solid #1a1a2e" : "2px solid #e5e7eb", borderRadius: "8px",
       background: on ? "#1a1a2e" : "#fff", color: on ? "#fff" : "#1a1a2e", fontFamily: "'DM Sans'", fontWeight: 600, fontSize: "13px", cursor: "pointer" }),
-    // Single flat grid — all rows share one grid context so column widths are always identical
+    // Single flat grid; halftime line is a dedicated 3px column between H1 and H2.
+    // 10 columns total: 1 name + 4 H1 + 1 divider + 4 H2. Every row supplies exactly 10 cells.
     grid: { background: "#fff", borderRadius: "12px", border: "1px solid #e5e7eb", overflow: "hidden", marginBottom: "16px",
-      display: "grid", gridTemplateColumns: "82px repeat(8, minmax(0, 1fr))" },
+      display: "grid", gridTemplateColumns: "82px repeat(4, minmax(0, 1fr)) 3px repeat(4, minmax(0, 1fr))" },
     badge: (pos) => ({ background: POS_COLORS[pos]?.bg || "transparent", color: POS_COLORS[pos]?.text || "#ccc",
       fontSize: "10px", fontFamily: "'DM Mono', monospace", fontWeight: 600, padding: "2px 6px", borderRadius: "4px",
       cursor: "pointer", userSelect: "none", display: "block", textAlign: "center" }),
@@ -175,18 +176,23 @@ export default function SoccerRotation() {
       fontFamily: "'DM Sans'", fontWeight: 600, fontSize: "12px", cursor: "pointer" }),
   };
 
-  // Shared cell style builders — halftime shadow on s===4 (0-based) keeps the line in a single CSS property
-  const htShadow = (s) => s === 4 ? "inset 3px 0 0 #1a1a2e" : "none";
-  const cHdr  = (s, extra = {}) => ({ padding: "8px 2px", fontSize: "10px", fontWeight: 600, color: "#999",
+  // Cell style builders — the halftime line is its own grid column (the 3px divider),
+  // so no boxShadow trickery is needed on data cells.
+  const cHdr  = (extra = {}) => ({ padding: "8px 2px", fontSize: "10px", fontWeight: 600, color: "#999",
     textAlign: "center", textTransform: "uppercase", letterSpacing: "0.5px",
-    background: "#fafafa", borderBottom: "2px solid #e5e7eb",
-    boxShadow: s === 5 ? "inset 3px 0 0 #1a1a2e" : "none", ...extra });
-  const cLock = (s, extra = {}) => ({ padding: "4px 2px", display: "flex", alignItems: "center", justifyContent: "center",
-    overflow: "hidden", background: "#f0fdf4", borderBottom: "1px solid #e5e7eb", boxShadow: htShadow(s), ...extra });
-  const cData = (s, bg, bdr, extra = {}) => ({ padding: "4px 2px", display: "flex", alignItems: "center", justifyContent: "center",
-    overflow: "hidden", background: bg, boxShadow: htShadow(s), ...bdr, ...extra });
-  const cAvg  = (s, extra = {}) => ({ padding: "4px 2px", display: "flex", alignItems: "center", justifyContent: "center",
-    overflow: "hidden", background: "#f8f7f4", borderTop: "2px solid #e5e7eb", boxShadow: htShadow(s), ...extra });
+    background: "#fafafa", borderBottom: "2px solid #e5e7eb", ...extra });
+  const cLock = (extra = {}) => ({ padding: "4px 2px", display: "flex", alignItems: "center", justifyContent: "center",
+    overflow: "hidden", background: "#f0fdf4", borderBottom: "1px solid #e5e7eb", ...extra });
+  const cData = (bg, bdr, extra = {}) => ({ padding: "4px 2px", display: "flex", alignItems: "center", justifyContent: "center",
+    overflow: "hidden", background: bg, ...bdr, ...extra });
+  const cAvg  = (extra = {}) => ({ padding: "4px 2px", display: "flex", alignItems: "center", justifyContent: "center",
+    overflow: "hidden", background: "#f8f7f4", borderTop: "2px solid #e5e7eb", ...extra });
+
+  // The halftime line is rendered as a dedicated grid column. Each row places one
+  // of these <Divider /> cells between H1 and H2; stacked top-to-bottom they form
+  // the vertical line. Because it's a real grid track at a fixed pixel width, the
+  // line's x-position cannot drift no matter what's in adjacent cells.
+  const Divider = () => <div style={{ background: "#1a1a2e" }} />;
 
   if (!loaded) {
     return (
@@ -267,24 +273,35 @@ export default function SoccerRotation() {
         {/* Header row */}
         <div style={{ padding: "8px", fontSize: "10px", fontWeight: 600, color: "#999", textTransform: "uppercase",
           background: "#fafafa", borderBottom: "2px solid #e5e7eb" }}>Player</div>
-        {[1, 2, 3, 4, 5, 6, 7, 8].map(s => (
-          <div key={s} style={cHdr(s)}>{s <= 4 ? `H1·${s}` : `H2·${s - 4}`}</div>
+        {[1, 2, 3, 4].map(s => (
+          <div key={s} style={cHdr()}>H1·{s}</div>
+        ))}
+        <Divider />
+        {[5, 6, 7, 8].map(s => (
+          <div key={s} style={cHdr()}>H2·{s - 4}</div>
         ))}
 
         {/* Lock row */}
         <div style={{ padding: "4px 8px", fontSize: "9px", fontWeight: 600, color: "#888",
           background: "#f0fdf4", borderBottom: "1px solid #e5e7eb" }}>Lock</div>
-        {[0, 1, 2, 3, 4, 5, 6, 7].map(s => {
-          const lk = `${activeGame}-${s}`;
-          const isLocked = !!lockedShifts[lk];
-          return (
-            <div key={s} style={cLock(s, { cursor: "pointer" })} onClick={() => toggleLockShift(activeGame, s)}>
-              <span style={{ fontSize: "12px", userSelect: "none", opacity: isLocked ? 1 : 0.3 }}>
-                {isLocked ? "🔒" : "🔓"}
-              </span>
-            </div>
-          );
-        })}
+        {(() => {
+          const renderLockCell = (s) => {
+            const lk = `${activeGame}-${s}`;
+            const isLocked = !!lockedShifts[lk];
+            return (
+              <div key={s} style={cLock({ cursor: "pointer" })} onClick={() => toggleLockShift(activeGame, s)}>
+                <span style={{ fontSize: "12px", userSelect: "none", opacity: isLocked ? 1 : 0.3 }}>
+                  {isLocked ? "🔒" : "🔓"}
+                </span>
+              </div>
+            );
+          };
+          return <>
+            {[0, 1, 2, 3].map(renderLockCell)}
+            <Divider />
+            {[4, 5, 6, 7].map(renderLockCell)}
+          </>;
+        })()}
 
         {/* Player rows */}
         {players.map((player, pi) => {
@@ -306,35 +323,42 @@ export default function SoccerRotation() {
                 </span>
               </div>
 
-              {/* Shift cells */}
-              {[0, 1, 2, 3, 4, 5, 6, 7].map(s => {
-                if (gameEx) {
-                  return <div key={s} style={cData(s, bg, bdr)}>
-                    <span style={{ ...S.xBadge, opacity: 0.4 }}>✕</span>
+              {/* Shift cells — split by half with the Divider between */}
+              {(() => {
+                const renderShiftCell = (s) => {
+                  if (gameEx) {
+                    return <div key={s} style={cData(bg, bdr)}>
+                      <span style={{ ...S.xBadge, opacity: 0.4 }}>✕</span>
+                    </div>;
+                  }
+                  if (isShiftExcluded(g, s, player.name)) {
+                    return <div key={s} style={cData(bg, bdr, { cursor: "pointer" })}
+                      onClick={() => restoreFromShift(g, s, player.name)}>
+                      <span style={S.xBadge}>✕</span>
+                    </div>;
+                  }
+                  const shift = games[g]?.[s];
+                  const pos = shift ? getPos(shift, player.name) : "";
+                  const forced = isShiftForced(g, s, player.name);
+                  if (pos) {
+                    return <div key={s} style={cData(bg, bdr, { cursor: "pointer" })}
+                      onClick={() => forced ? unforceFromShift(g, s, player.name) : excludeFromShift(g, s, player.name)}>
+                      <span style={{ ...S.badge(pos), ...(forced ? { boxShadow: "0 0 0 2px #22c55e", borderRadius: "5px" } : {}) }}>
+                        {pos}
+                      </span>
+                    </div>;
+                  }
+                  return <div key={s} style={cData(bg, bdr, { cursor: "pointer" })}
+                    onClick={() => forceIntoShift(g, s, player.name)}>
+                    <span style={{ fontSize: "10px", color: "#bbb", padding: "2px 4px" }}>–</span>
                   </div>;
-                }
-                if (isShiftExcluded(g, s, player.name)) {
-                  return <div key={s} style={cData(s, bg, bdr, { cursor: "pointer" })}
-                    onClick={() => restoreFromShift(g, s, player.name)}>
-                    <span style={S.xBadge}>✕</span>
-                  </div>;
-                }
-                const shift = games[g]?.[s];
-                const pos = shift ? getPos(shift, player.name) : "";
-                const forced = isShiftForced(g, s, player.name);
-                if (pos) {
-                  return <div key={s} style={cData(s, bg, bdr, { cursor: "pointer" })}
-                    onClick={() => forced ? unforceFromShift(g, s, player.name) : excludeFromShift(g, s, player.name)}>
-                    <span style={{ ...S.badge(pos), ...(forced ? { boxShadow: "0 0 0 2px #22c55e", borderRadius: "5px" } : {}) }}>
-                      {pos}
-                    </span>
-                  </div>;
-                }
-                return <div key={s} style={cData(s, bg, bdr, { cursor: "pointer" })}
-                  onClick={() => forceIntoShift(g, s, player.name)}>
-                  <span style={{ fontSize: "10px", color: "#bbb", padding: "2px 4px" }}>–</span>
-                </div>;
-              })}
+                };
+                return <>
+                  {[0, 1, 2, 3].map(renderShiftCell)}
+                  <Divider />
+                  {[4, 5, 6, 7].map(renderShiftCell)}
+                </>;
+              })()}
             </Fragment>
           );
         })}
@@ -342,18 +366,25 @@ export default function SoccerRotation() {
         {/* Field avg row */}
         <div style={{ padding: "8px", fontSize: "10px", fontWeight: 700, color: "#666",
           background: "#f8f7f4", borderTop: "2px solid #e5e7eb" }}>Field Avg</div>
-        {[0, 1, 2, 3, 4, 5, 6, 7].map(s => {
-          const shift = games[activeGame]?.[s];
-          if (!shift) return <div key={s} style={cAvg(s)}>–</div>;
-          const fp = [shift.D, shift.R1, shift.R2, shift.O].filter(Boolean);
-          const avg = fp.length
-            ? fp.reduce((sum, n) => sum + (GRADE_VAL[players.find(p => p.name === n)?.grade] || 0), 0) / fp.length
-            : 0;
-          const color = avg >= 2.3 ? "#22c55e" : avg >= 2.0 ? "#eab308" : "#ef4444";
-          return <div key={s} style={cAvg(s)}>
-            <span style={{ fontSize: "10px", fontFamily: "'DM Mono'", fontWeight: 700, color }}>{avg.toFixed(1)}</span>
-          </div>;
-        })}
+        {(() => {
+          const renderAvgCell = (s) => {
+            const shift = games[activeGame]?.[s];
+            if (!shift) return <div key={s} style={cAvg()}>–</div>;
+            const fp = [shift.D, shift.R1, shift.R2, shift.O].filter(Boolean);
+            const avg = fp.length
+              ? fp.reduce((sum, n) => sum + (GRADE_VAL[players.find(p => p.name === n)?.grade] || 0), 0) / fp.length
+              : 0;
+            const color = avg >= 2.3 ? "#22c55e" : avg >= 2.0 ? "#eab308" : "#ef4444";
+            return <div key={s} style={cAvg()}>
+              <span style={{ fontSize: "10px", fontFamily: "'DM Mono'", fontWeight: 700, color }}>{avg.toFixed(1)}</span>
+            </div>;
+          };
+          return <>
+            {[0, 1, 2, 3].map(renderAvgCell)}
+            <Divider />
+            {[4, 5, 6, 7].map(renderAvgCell)}
+          </>;
+        })()}
 
       </div>{/* end grid */}
 
