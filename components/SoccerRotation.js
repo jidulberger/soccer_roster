@@ -10,12 +10,15 @@ export default function SoccerRotation() {
   const [seed, setSeed] = useState(0);
   const [shiftExclusions, setShiftExclusions] = useState({});
   const [shiftForceIns, setShiftForceIns] = useState({});
+  const [shiftForcePositions, setShiftForcePositions] = useState({});
   const [gameExclusions, setGameExclusions] = useState({});
   const [lockedShifts, setLockedShifts] = useState({});
   const [players, setPlayers] = useState(INITIAL_PLAYERS);
   const [showRoster, setShowRoster] = useState(false);
   const [activeGame, setActiveGame] = useState(0);
   const [loaded, setLoaded] = useState(false);
+  // positionPicker: which sitting cell the user tapped — shows position chooser bar
+  const [positionPicker, setPositionPicker] = useState(null); // { g, s, playerName } | null
 
   useEffect(() => {
     fetch('/api/state')
@@ -24,6 +27,7 @@ export default function SoccerRotation() {
         if (state.seed !== undefined) setSeed(state.seed);
         if (state.shiftExclusions) setShiftExclusions(state.shiftExclusions);
         if (state.shiftForceIns) setShiftForceIns(state.shiftForceIns);
+        if (state.shiftForcePositions) setShiftForcePositions(state.shiftForcePositions);
         if (state.gameExclusions) setGameExclusions(state.gameExclusions);
         if (state.lockedShifts) setLockedShifts(state.lockedShifts);
         if (state.players) setPlayers(state.players);
@@ -38,11 +42,11 @@ export default function SoccerRotation() {
       fetch('/api/state', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ seed, shiftExclusions, shiftForceIns, gameExclusions, lockedShifts, players }),
+        body: JSON.stringify({ seed, shiftExclusions, shiftForceIns, shiftForcePositions, gameExclusions, lockedShifts, players }),
       }).catch(() => {});
     }, 500);
     return () => clearTimeout(timer);
-  }, [seed, shiftExclusions, shiftForceIns, gameExclusions, lockedShifts, players, loaded]);
+  }, [seed, shiftExclusions, shiftForceIns, shiftForcePositions, gameExclusions, lockedShifts, players, loaded]);
 
   const handleSync = useCallback(async () => {
     try {
@@ -50,6 +54,7 @@ export default function SoccerRotation() {
       if (state.seed !== undefined) setSeed(state.seed);
       if (state.shiftExclusions) setShiftExclusions(state.shiftExclusions);
       if (state.shiftForceIns) setShiftForceIns(state.shiftForceIns);
+      if (state.shiftForcePositions) setShiftForcePositions(state.shiftForcePositions);
       if (state.gameExclusions) setGameExclusions(state.gameExclusions);
       if (state.lockedShifts) setLockedShifts(state.lockedShifts);
       if (state.players) setPlayers(state.players);
@@ -57,8 +62,8 @@ export default function SoccerRotation() {
   }, []);
 
   const { games, totalShifts, totalPositions } = useMemo(() => {
-    return generateRotation(seed, players, shiftExclusions, gameExclusions, shiftForceIns, lockedShifts);
-  }, [seed, players, shiftExclusions, gameExclusions, shiftForceIns, lockedShifts]);
+    return generateRotation(seed, players, shiftExclusions, gameExclusions, shiftForceIns, lockedShifts, shiftForcePositions);
+  }, [seed, players, shiftExclusions, gameExclusions, shiftForceIns, lockedShifts, shiftForcePositions]);
 
   const excludeFromShift = useCallback((gameIdx, shiftIdx, playerName) => {
     setShiftExclusions(prev => {
@@ -101,22 +106,37 @@ export default function SoccerRotation() {
     });
   }, []);
 
-  const forceIntoShift = useCallback((gameIdx, shiftIdx, playerName) => {
+  // Force a player into a shift, optionally at a specific position (G/D/R/O).
+  // If position is null, any position (algorithm decides).
+  const forceIntoShift = useCallback((gameIdx, shiftIdx, playerName, position = null) => {
+    const key = `${gameIdx}-${shiftIdx}`;
     setShiftForceIns(prev => {
-      const key = `${gameIdx}-${shiftIdx}`;
       const list = [...(prev[key] || [])];
       if (!list.includes(playerName)) list.push(playerName);
       return { ...prev, [key]: list };
     });
+    if (position) {
+      setShiftForcePositions(prev => ({
+        ...prev,
+        [key]: { ...(prev[key] || {}), [playerName]: position },
+      }));
+    }
   }, []);
 
   const unforceFromShift = useCallback((gameIdx, shiftIdx, playerName) => {
+    const key = `${gameIdx}-${shiftIdx}`;
     setShiftForceIns(prev => {
-      const key = `${gameIdx}-${shiftIdx}`;
       if (!prev[key]) return prev;
       const list = prev[key].filter(n => n !== playerName);
       if (list.length === 0) { const next = { ...prev }; delete next[key]; return next; }
       return { ...prev, [key]: list };
+    });
+    // Also clear any forced position for this player
+    setShiftForcePositions(prev => {
+      if (!prev[key] || !prev[key][playerName]) return prev;
+      const { [playerName]: _removed, ...rest } = prev[key];
+      if (Object.keys(rest).length === 0) { const next = { ...prev }; delete next[key]; return next; }
+      return { ...prev, [key]: rest };
     });
   }, []);
 
@@ -136,6 +156,7 @@ export default function SoccerRotation() {
   const isGameExcluded  = (gi, name) => (gameExclusions[gi] || []).includes(name);
   const isShiftExcluded = (gi, si, name) => (shiftExclusions[`${gi}-${si}`] || []).includes(name);
   const isShiftForced   = (gi, si, name) => (shiftForceIns[`${gi}-${si}`] || []).includes(name);
+  const getForcedPos    = (gi, si, name) => (shiftForcePositions[`${gi}-${si}`] || {})[name] || null;
 
   const exCount = (gi) => {
     const ge = (gameExclusions[gi] || []).length;
@@ -154,6 +175,7 @@ export default function SoccerRotation() {
   const hasAnyOverrides = Object.values(gameExclusions).some(e => e.length > 0) ||
     Object.keys(shiftExclusions).length > 0 ||
     Object.keys(shiftForceIns).length > 0 ||
+    Object.keys(shiftForcePositions).length > 0 ||
     Object.keys(lockedShifts).length > 0;
 
   // ── Styles ──
@@ -162,8 +184,6 @@ export default function SoccerRotation() {
     tabs: { display: "flex", gap: "6px", marginBottom: "12px" },
     tab: (on) => ({ flex: 1, padding: "9px 0", border: on ? "2px solid #1a1a2e" : "2px solid #e5e7eb", borderRadius: "8px",
       background: on ? "#1a1a2e" : "#fff", color: on ? "#fff" : "#1a1a2e", fontFamily: "'DM Sans'", fontWeight: 600, fontSize: "13px", cursor: "pointer" }),
-    // The halftime divider is a real 3px grid column — column 6 of 10.
-    // It cannot drift because CSS Grid guarantees every row occupies the same column tracks.
     grid: { background: "#fff", borderRadius: "12px", border: "1px solid #e5e7eb", overflow: "hidden",
       display: "grid",
       gridTemplateColumns: "82px repeat(4, minmax(0, 1fr)) 3px repeat(4, minmax(0, 1fr))",
@@ -209,9 +229,7 @@ export default function SoccerRotation() {
     overflow: "hidden", background: bg, ...bdr, ...extra });
   const cAvg  = (extra = {}) => ({ padding: "4px 2px", display: "flex", alignItems: "center", justifyContent: "center",
     overflow: "hidden", background: "#f8f7f4", borderTop: "2px solid #e5e7eb", ...extra });
-  // Halftime divider column cells — always dark, always the exact same grid column.
   const cDiv  = (extra = {}) => ({ background: "#1a1a2e", ...extra });
-
 
   if (!loaded) {
     return (
@@ -221,6 +239,11 @@ export default function SoccerRotation() {
     );
   }
 
+  // Label for position picker context
+  const pickerLabel = positionPicker
+    ? `${positionPicker.playerName} · ${positionPicker.s < 4 ? `H1·${positionPicker.s + 1}` : `H2·${positionPicker.s - 3}`}`
+    : "";
+
   return (
     <div style={S.root}>
       <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet" />
@@ -228,7 +251,7 @@ export default function SoccerRotation() {
       <h1 style={{ fontSize: "20px", fontWeight: 700, margin: "0 0 2px", letterSpacing: "-0.5px" }}>⚽ Deathwalkers Roster Rotation</h1>
       <p style={{ fontSize: "11px", color: "#666", margin: "0 0 4px", lineHeight: 1.5 }}>
         Tap <b>position</b> → remove from shift&nbsp;&nbsp;·&nbsp;&nbsp;
-        Tap <b>–</b> → force into shift&nbsp;&nbsp;·&nbsp;&nbsp;
+        Tap <b>–</b> → force position&nbsp;&nbsp;·&nbsp;&nbsp;
         Tap <b style={{ color: "#991b1b" }}>✕</b> → undo&nbsp;&nbsp;·&nbsp;&nbsp;
         Tap <b>name</b> → out for game
       </p>
@@ -286,11 +309,51 @@ export default function SoccerRotation() {
         })}
       </div>
 
-      {/* ── Rotation grid ──
-          Column layout: [name 82px] [H1·1] [H1·2] [H1·3] [H1·4] [DIVIDER 3px] [H2·1] [H2·2] [H2·3] [H2·4]
-          The divider is column 6 of 10 — a real grid track, not an overlay.
-          Every row places a dark cell in column 6, so the divider is pixel-perfect
-          across all rows regardless of what badges appear in other cells. */}
+      {/* ── Position picker bar ──
+          Appears when a sitting player's "–" cell is tapped.
+          Lets the coach force that player to a specific position for that shift. */}
+      {positionPicker && (
+        <div style={{
+          marginBottom: "8px", padding: "10px 12px",
+          background: "#1a1a2e", borderRadius: "10px",
+          display: "flex", gap: "6px", flexWrap: "wrap", alignItems: "center",
+        }}>
+          <span style={{ fontSize: "11px", fontWeight: 600, color: "#e2e8f0", marginRight: "4px", whiteSpace: "nowrap" }}>
+            Force {pickerLabel}:
+          </span>
+          {["G", "D", "R", "O"].map(pos => (
+            <button key={pos} onClick={() => {
+              forceIntoShift(positionPicker.g, positionPicker.s, positionPicker.playerName, pos);
+              setPositionPicker(null);
+            }} style={{
+              padding: "5px 10px", borderRadius: "6px", fontFamily: "'DM Mono'", fontWeight: 700,
+              fontSize: "12px", cursor: "pointer", border: "none",
+              background: POS_COLORS[pos].bg, color: POS_COLORS[pos].text,
+            }}>
+              {pos === "G" ? "🧤 G" : pos}
+            </button>
+          ))}
+          <button onClick={() => {
+            forceIntoShift(positionPicker.g, positionPicker.s, positionPicker.playerName, null);
+            setPositionPicker(null);
+          }} style={{
+            padding: "5px 10px", borderRadius: "6px", fontFamily: "'DM Sans'", fontWeight: 600,
+            fontSize: "11px", cursor: "pointer", border: "1px solid #475569",
+            background: "transparent", color: "#94a3b8",
+          }}>
+            Any
+          </button>
+          <button onClick={() => setPositionPicker(null)} style={{
+            padding: "5px 8px", borderRadius: "6px", fontFamily: "'DM Sans'", fontWeight: 600,
+            fontSize: "11px", cursor: "pointer", border: "none",
+            background: "transparent", color: "#64748b", marginLeft: "auto",
+          }}>
+            ✕
+          </button>
+        </div>
+      )}
+
+      {/* Rotation grid */}
       <div style={S.grid}>
 
         {/* Header row */}
@@ -353,17 +416,32 @@ export default function SoccerRotation() {
             const shift = games[g]?.[s];
             const pos = shift ? getPos(shift, player.name) : "";
             const forced = isShiftForced(g, s, player.name);
+            const forcedPos = getForcedPos(g, s, player.name);
             if (pos) {
+              // On field — tap to remove from shift (also clears any force)
               return <div key={s} style={cData(bg, bdr, { cursor: "pointer" })}
-                onClick={() => forced ? unforceFromShift(g, s, player.name) : excludeFromShift(g, s, player.name)}>
-                <span style={{ ...S.badge(pos), ...(forced ? { boxShadow: "0 0 0 2px #22c55e", borderRadius: "5px" } : {}) }}>
+                onClick={() => {
+                  if (forced) unforceFromShift(g, s, player.name);
+                  else excludeFromShift(g, s, player.name);
+                }}>
+                <span style={{
+                  ...S.badge(pos),
+                  ...(forced ? { boxShadow: "0 0 0 2px #22c55e", borderRadius: "5px" } : {}),
+                  // Gold ring if forced to a specific position
+                  ...(forcedPos ? { boxShadow: "0 0 0 2px #f59e0b", borderRadius: "5px" } : {}),
+                }}>
                   {pos}
                 </span>
               </div>;
             }
-            return <div key={s} style={cData(bg, bdr, { cursor: "pointer" })}
-              onClick={() => forceIntoShift(g, s, player.name)}>
-              <span style={S.sit}>–</span>
+            // Sitting — tap to open position picker
+            const isPickerOpen = positionPicker && positionPicker.g === g && positionPicker.s === s && positionPicker.playerName === player.name;
+            return <div key={s} style={cData(bg, bdr, { cursor: "pointer", background: isPickerOpen ? "#f0f9ff" : bg })}
+              onClick={() => {
+                if (isPickerOpen) { setPositionPicker(null); }
+                else { setPositionPicker({ g, s, playerName: player.name }); }
+              }}>
+              <span style={{ ...S.sit, color: isPickerOpen ? "#2563eb" : "#ccc" }}>–</span>
             </div>;
           };
 
@@ -380,13 +458,8 @@ export default function SoccerRotation() {
                 </span>
               </div>
 
-              {/* First half */}
               {[0, 1, 2, 3].map(renderShiftCell)}
-
-              {/* Halftime divider cell */}
               <div key="div" style={cDiv(bdr)} />
-
-              {/* Second half */}
               {[4, 5, 6, 7].map(renderShiftCell)}
             </Fragment>
           );
@@ -435,6 +508,10 @@ export default function SoccerRotation() {
           <span style={{ ...S.xBadge, cursor: "default", fontSize: "9px", padding: "1px 5px" }}>✕</span>
           <span style={{ fontSize: "10px", color: "#888" }}>Out (tap to restore)</span>
         </div>
+        <div style={{ display: "flex", alignItems: "center", gap: "3px" }}>
+          <span style={{ ...S.badge("D"), boxShadow: "0 0 0 2px #f59e0b", borderRadius: "5px", cursor: "default", fontSize: "9px", padding: "1px 5px" }}>D</span>
+          <span style={{ fontSize: "10px", color: "#888" }}>Position forced</span>
+        </div>
       </div>
 
       {/* Tournament totals */}
@@ -482,7 +559,8 @@ export default function SoccerRotation() {
             <button onClick={handleSync} style={S.btn("#2563eb")}>📡 Sync</button>
             {hasAnyOverrides && (
               <button onClick={() => {
-                setShiftExclusions({}); setGameExclusions({}); setShiftForceIns({}); setLockedShifts({});
+                setShiftExclusions({}); setGameExclusions({}); setShiftForceIns({});
+                setShiftForcePositions({}); setLockedShifts({});
               }} style={S.btn("#dc2626")}>↩ Clear All</button>
             )}
             <div style={{ display: "flex", alignItems: "center", gap: "6px", padding: "6px 14px", background: "#f9fafb",
@@ -492,9 +570,9 @@ export default function SoccerRotation() {
               <span style={{ color: "#999", fontSize: "10px" }}>{minLabel}</span>
             </div>
             <button onClick={async () => {
-              const defaults = { seed: 0, shiftExclusions: {}, shiftForceIns: {}, gameExclusions: {}, lockedShifts: {}, players: INITIAL_PLAYERS };
+              const defaults = { seed: 0, shiftExclusions: {}, shiftForceIns: {}, shiftForcePositions: {}, gameExclusions: {}, lockedShifts: {}, players: INITIAL_PLAYERS };
               setSeed(0); setShiftExclusions({}); setGameExclusions({});
-              setShiftForceIns({}); setLockedShifts({}); setPlayers(INITIAL_PLAYERS);
+              setShiftForceIns({}); setShiftForcePositions({}); setLockedShifts({}); setPlayers(INITIAL_PLAYERS);
               try {
                 await fetch('/api/state', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(defaults) });
               } catch(e) {}
