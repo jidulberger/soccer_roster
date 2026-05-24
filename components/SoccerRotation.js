@@ -893,7 +893,6 @@ export default function SoccerRotation() {
         onKill={() => {
           if (!shiftEditorModal) return;
           toggleKillShift(shiftEditorModal.g, shiftEditorModal.s);
-          setShiftEditorModal(null);
         }}
         setDraft={setEditorDraft}
         setPickingSlot={setEditorPickingSlot}
