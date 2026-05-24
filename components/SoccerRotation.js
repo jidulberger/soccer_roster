@@ -31,11 +31,7 @@ export default function SoccerRotation() {
   const setActiveGame = useCallback((g) => {
     setActiveGameRaw(g);
     try { window.localStorage.setItem("dw_activeGame", String(g)); } catch(e) {}
-    setScoreForm(prev => {
-      const r = gameResults[g];
-      return r ? { home: String(r.home), away: String(r.away) } : { home: '', away: '' };
-    });
-  }, [gameResults]);
+  }, []);
   useEffect(() => {
     try {
       const saved = window.localStorage.getItem("dw_activeGame");
@@ -58,6 +54,12 @@ export default function SoccerRotation() {
   const [timerHalf, setTimerHalf] = useState(1);
   const [gameResults, setGameResults] = useState({}); // { 0: {home:3,away:2}, 1: ... }
   const [scoreForm, setScoreForm] = useState({ home: '', away: '' });
+
+  // Keep score form in sync with active game's saved result
+  useEffect(() => {
+    const r = gameResults[activeGame];
+    setScoreForm(r ? { home: String(r.home), away: String(r.away) } : { home: '', away: '' });
+  }, [activeGame, gameResults]);
 
   const applyBlobState = useCallback((state) => {
     if (state.seed !== undefined) setSeed(state.seed);
