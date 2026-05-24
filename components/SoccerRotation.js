@@ -1416,14 +1416,11 @@ function ShiftEditorModal({ modal, draft, pickingSlot, players, lockedShifts, ki
               {lockedShifts[`${g}-${s}`] && (
                 <button onClick={onUnlock} style={{ ...S.btn("#666"), fontSize: "11px", padding: "9px 12px" }}>Unlock</button>
               )}
-              {onKill && (() => {
-                const isKilled = !!(killedShifts && killedShifts[`${g}-${s}`]);
-                return (
-                  <button onClick={onKill} style={{ ...S.btn(isKilled ? "#16a34a" : "#dc2626"), fontSize: "11px", padding: "9px 12px" }}>
-                    {isKilled ? "↩ Unkill" : "💀 Kill"}
-                  </button>
-                );
-              })()}
+              {onKill && (
+                <button onClick={onKill} style={{ ...S.btn(killedShifts && killedShifts[`${g}-${s}`] ? "#16a34a" : "#dc2626"), fontSize: "11px", padding: "9px 12px" }}>
+                  {killedShifts && killedShifts[`${g}-${s}`] ? "↩ Unkill" : "💀 Kill"}
+                </button>
+              )}
             </div>
           </>
         )}
