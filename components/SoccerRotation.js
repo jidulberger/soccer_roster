@@ -88,20 +88,29 @@ export default function SoccerRotation() {
       .then(r => r.json())
       .then(state => {
         applyBlobState(state);
+        lastSeenSavedAtRef.current = state._savedAt || 0;
         setSyncInfo({ storage: state._storage || "?", savedAt: state._savedAt || null, fetchedAt: Date.now() });
       })
       .catch(() => {})
       .finally(() => setLoaded(true));
   }, [applyBlobState]);
 
+  // lastSeenSavedAtRef: the blob _savedAt we most recently fetched or saved ourselves.
+  // Comparing against this (not our save time) means device B won't skip device A's
+  // changes just because B saved something more recently.
+  const lastSeenSavedAtRef = useRef(0);
+  const skipNextSaveRef = useRef(false); // prevent poll-triggered debounce from re-saving
+
   useEffect(() => {
     if (!loaded) return;
+    if (skipNextSaveRef.current) { skipNextSaveRef.current = false; return; }
     const timer = setTimeout(() => {
       fetch('/api/state', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ seed, shiftExclusions, shiftForceIns, shiftForcePositions, gameExclusions, lockedShifts, killedShifts, goalieMode, shiftsPerGame, players, timerHalfMin, timerIntervalMin, timerWarnSec, timerHalf, gameResults }),
       }).then(r => r.json()).then(j => {
+        lastSeenSavedAtRef.current = j.savedAt || 0;
         setSyncInfo(prev => ({ ...prev, storage: j.storage || prev.storage, savedAt: j.savedAt || prev.savedAt, error: j.error || null }));
       }).catch(() => {});
     }, 500);
@@ -111,6 +120,7 @@ export default function SoccerRotation() {
   const handleSync = useCallback(async () => {
     try {
       const state = await fetch('/api/state').then(r => r.json());
+      lastSeenSavedAtRef.current = state._savedAt || 0;
       applyBlobState(state);
       setSyncInfo({ storage: state._storage || "?", savedAt: state._savedAt || null, fetchedAt: Date.now() });
     } catch(e) {}
@@ -128,7 +138,7 @@ export default function SoccerRotation() {
     currentStateRef.current = { seed, shiftExclusions, shiftForceIns, shiftForcePositions, gameExclusions, lockedShifts, killedShifts, goalieMode, shiftsPerGame, players, timerHalfMin, timerIntervalMin, timerWarnSec, timerHalf, gameResults };
   }, [seed, shiftExclusions, shiftForceIns, shiftForcePositions, gameExclusions, lockedShifts, killedShifts, goalieMode, shiftsPerGame, players, timerHalfMin, timerIntervalMin, timerWarnSec, timerHalf, gameResults]);
 
-  // Immediate save (bypasses debounce) — used for lock/kill/score to ensure cross-device visibility
+  // Immediate save — used for lock/kill/score to ensure cross-device visibility
   const saveNow = useCallback(async (overrides = {}) => {
     if (!loaded) return;
     const payload = { ...currentStateRef.current, ...overrides };
@@ -138,23 +148,24 @@ export default function SoccerRotation() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),
       }).then(r => r.json());
+      lastSeenSavedAtRef.current = j.savedAt || 0;
       setSyncInfo(prev => ({ ...prev, storage: j.storage || prev.storage, savedAt: j.savedAt || prev.savedAt, error: j.error || null }));
     } catch(e) {}
   }, [loaded]);
 
-  // Poll every 15 seconds — update only if blob has a newer savedAt than ours
-  const savedAtRef = useRef(null);
-  useEffect(() => { savedAtRef.current = syncInfo.savedAt; }, [syncInfo.savedAt]);
+  // Poll every 5 seconds — skip if blob version unchanged since last fetch/save
   useEffect(() => {
     if (!loaded) return;
     const id = setInterval(async () => {
       try {
         const state = await fetch('/api/state').then(r => r.json());
-        if (state._savedAt && savedAtRef.current && state._savedAt <= savedAtRef.current) return;
+        if (state._savedAt && state._savedAt <= lastSeenSavedAtRef.current) return;
+        lastSeenSavedAtRef.current = state._savedAt || 0;
+        skipNextSaveRef.current = true; // prevent debounce from re-saving this polled data
         applyBlobState(state);
         setSyncInfo({ storage: state._storage || "?", savedAt: state._savedAt || null, fetchedAt: Date.now() });
       } catch(e) {}
-    }, 15000);
+    }, 5000);
     return () => clearInterval(id);
   }, [loaded, applyBlobState]);
 
@@ -445,6 +456,14 @@ export default function SoccerRotation() {
         intervalMin={timerIntervalMin} setIntervalMin={v => { setTimerIntervalMin(v); saveNow({ timerIntervalMin: v }); }}
         warnSec={timerWarnSec} setWarnSec={v => { setTimerWarnSec(v); saveNow({ timerWarnSec: v }); }}
         half={timerHalf} setHalf={v => { setTimerHalf(v); saveNow({ timerHalf: v }); }}
+        activeGame={activeGame}
+        gameResult={gameResults[activeGame]}
+        onSetResult={(home, away) => {
+          const next = { ...gameResults };
+          if (home === null) { delete next[activeGame]; } else { next[activeGame] = { home, away }; }
+          setGameResults(next);
+          saveNow({ gameResults: next });
+        }}
       />
       <p style={{ fontSize: "11px", color: "#666", margin: "0 0 4px", lineHeight: 1.5 }}>
         Tap <b>badge</b> or <b>–</b> → set / change position&nbsp;&nbsp;·&nbsp;&nbsp;
@@ -986,7 +1005,7 @@ function playBeep(ctx, freqs, durationMs = 250, gap = 80) {
   } catch(e) {}
 }
 
-function MatchTimer({ halfMin, setHalfMin, intervalMin, setIntervalMin, warnSec, setWarnSec, half, setHalf }) {
+function MatchTimer({ halfMin, setHalfMin, intervalMin, setIntervalMin, warnSec, setWarnSec, half, setHalf, activeGame, gameResult, onSetResult }) {
   const [expanded, setExpanded] = useState(false);
   const [running, setRunning] = useState(false);
   const startRef = useRef(null);
@@ -1108,15 +1127,19 @@ function MatchTimer({ halfMin, setHalfMin, intervalMin, setIntervalMin, warnSec,
     forceRender(x => x + 1);
   };
   const addSeconds = (sec) => {
+    // Moves the clock FORWARD (skips ahead) — useful for catching up if timer started late
     const ms = sec * 1000;
     if (running && startRef.current) {
-      startRef.current += ms; // shift start forward → reduces elapsed → adds to remaining
+      startRef.current -= ms; // shift start backward → increases elapsed → reduces remaining
     } else {
-      baseRef.current = Math.max(0, baseRef.current - ms);
+      baseRef.current = Math.min(halfMs, baseRef.current + ms);
     }
-    endRef.current = false; // allow halftime alarm to fire again
     forceRender(x => x + 1);
   };
+  const [htScoreForm, setHtScoreForm] = useState({ home: '', away: '' });
+  useEffect(() => {
+    if (gameResult) setHtScoreForm({ home: String(gameResult.home), away: String(gameResult.away) });
+  }, [gameResult]);
   const testBeep = () => { ensureAudio(); playBeep(audioCtxRef.current, [660], 200); };
 
   const mm = Math.floor(remaining / 60000);
@@ -1241,6 +1264,39 @@ function MatchTimer({ halfMin, setHalfMin, intervalMin, setIntervalMin, warnSec,
             ))}
           </span>
         </div>
+
+        {/* Halftime score prompt — shown when the timer has ended */}
+        {endRef.current && onSetResult && (
+          <div style={{ marginTop: "10px", padding: "10px 12px", borderRadius: "8px",
+            background: running ? "#1e3a5f" : "#f0f9ff", border: "1px solid #93c5fd" }}>
+            <div style={{ fontSize: "11px", fontWeight: 700, color: running ? "#93c5fd" : "#1d4ed8", marginBottom: "8px" }}>
+              🏁 H{half} done — enter score for G{(activeGame || 0) + 1}
+            </div>
+            {gameResult ? (
+              <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                <span style={{ fontFamily: "'DM Mono'", fontWeight: 800, fontSize: "16px", color: running ? "#fff" : "#1a1a2e" }}>
+                  {gameResult.home} – {gameResult.away}
+                </span>
+                <button onClick={() => onSetResult(null, null)} style={{ ...btnS("#94a3b8"), fontSize: "10px", padding: "4px 8px" }}>clear</button>
+              </div>
+            ) : (
+              <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+                <input type="number" min="0" max="99" placeholder="Us" value={htScoreForm.home}
+                  onChange={e => setHtScoreForm(p => ({ ...p, home: e.target.value }))}
+                  style={{ width: "52px", padding: "5px", borderRadius: "5px", border: "1px solid #93c5fd", fontSize: "14px", fontFamily: "'DM Mono'", fontWeight: 700, textAlign: "center" }} />
+                <span style={{ fontWeight: 700, color: running ? "#93c5fd" : "#888" }}>–</span>
+                <input type="number" min="0" max="99" placeholder="Them" value={htScoreForm.away}
+                  onChange={e => setHtScoreForm(p => ({ ...p, away: e.target.value }))}
+                  style={{ width: "52px", padding: "5px", borderRadius: "5px", border: "1px solid #93c5fd", fontSize: "14px", fontFamily: "'DM Mono'", fontWeight: 700, textAlign: "center" }} />
+                <button onClick={() => {
+                  const h = parseInt(htScoreForm.home, 10);
+                  const a = parseInt(htScoreForm.away, 10);
+                  if (!isNaN(h) && !isNaN(a)) onSetResult(h, a);
+                }} style={btnS("#1d4ed8")}>✅ Done</button>
+              </div>
+            )}
+          </div>
+        )}
       </div>
     </>
   );
