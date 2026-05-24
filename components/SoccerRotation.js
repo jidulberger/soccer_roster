@@ -31,7 +31,11 @@ export default function SoccerRotation() {
   const setActiveGame = useCallback((g) => {
     setActiveGameRaw(g);
     try { window.localStorage.setItem("dw_activeGame", String(g)); } catch(e) {}
-  }, []);
+    setScoreForm(prev => {
+      const r = gameResults[g];
+      return r ? { home: String(r.home), away: String(r.away) } : { home: '', away: '' };
+    });
+  }, [gameResults]);
   useEffect(() => {
     try {
       const saved = window.localStorage.getItem("dw_activeGame");
@@ -48,30 +52,45 @@ export default function SoccerRotation() {
   const [editorPickingSlot, setEditorPickingSlot] = useState(null); // "G"|"D"|"R1"|"R2"|"O"|null
   const [syncInfo, setSyncInfo] = useState({ storage: "?", savedAt: null, fetchedAt: null, error: null });
   const [totalsTab, setTotalsTab] = useState("total"); // "this" | "sofar" | "total"
+  const [timerHalfMin, setTimerHalfMin] = useState(20);
+  const [timerIntervalMin, setTimerIntervalMin] = useState(5);
+  const [timerWarnSec, setTimerWarnSec] = useState(60);
+  const [timerHalf, setTimerHalf] = useState(1);
+  const [gameResults, setGameResults] = useState({}); // { 0: {home:3,away:2}, 1: ... }
+  const [scoreForm, setScoreForm] = useState({ home: '', away: '' });
+
+  const applyBlobState = useCallback((state) => {
+    if (state.seed !== undefined) setSeed(state.seed);
+    if (state.shiftExclusions) setShiftExclusions(state.shiftExclusions);
+    if (state.shiftForceIns) setShiftForceIns(state.shiftForceIns);
+    if (state.shiftForcePositions) setShiftForcePositions(state.shiftForcePositions);
+    if (state.gameExclusions) setGameExclusions(state.gameExclusions);
+    if (state.lockedShifts) setLockedShifts(state.lockedShifts);
+    if (state.killedShifts) setKilledShifts(state.killedShifts);
+    if (state.goalieMode) setGoalieMode(state.goalieMode);
+    if (state.shiftsPerGame) {
+      setShiftsPerGame(Array.isArray(state.shiftsPerGame)
+        ? state.shiftsPerGame
+        : [state.shiftsPerGame, state.shiftsPerGame, state.shiftsPerGame, state.shiftsPerGame]);
+    }
+    if (state.players) setPlayers(state.players);
+    if (state.timerHalfMin) setTimerHalfMin(state.timerHalfMin);
+    if (state.timerIntervalMin) setTimerIntervalMin(state.timerIntervalMin);
+    if (state.timerWarnSec) setTimerWarnSec(state.timerWarnSec);
+    if (state.timerHalf !== undefined) setTimerHalf(state.timerHalf);
+    if (state.gameResults) setGameResults(state.gameResults);
+  }, []);
 
   useEffect(() => {
     fetch('/api/state')
       .then(r => r.json())
       .then(state => {
-        if (state.seed !== undefined) setSeed(state.seed);
-        if (state.shiftExclusions) setShiftExclusions(state.shiftExclusions);
-        if (state.shiftForceIns) setShiftForceIns(state.shiftForceIns);
-        if (state.shiftForcePositions) setShiftForcePositions(state.shiftForcePositions);
-        if (state.gameExclusions) setGameExclusions(state.gameExclusions);
-        if (state.lockedShifts) setLockedShifts(state.lockedShifts);
-        if (state.killedShifts) setKilledShifts(state.killedShifts);
-        if (state.goalieMode) setGoalieMode(state.goalieMode);
-        if (state.shiftsPerGame) {
-          setShiftsPerGame(Array.isArray(state.shiftsPerGame)
-            ? state.shiftsPerGame
-            : [state.shiftsPerGame, state.shiftsPerGame, state.shiftsPerGame, state.shiftsPerGame]);
-        }
-        if (state.players) setPlayers(state.players);
+        applyBlobState(state);
         setSyncInfo({ storage: state._storage || "?", savedAt: state._savedAt || null, fetchedAt: Date.now() });
       })
       .catch(() => {})
       .finally(() => setLoaded(true));
-  }, []);
+  }, [applyBlobState]);
 
   useEffect(() => {
     if (!loaded) return;
@@ -79,40 +98,63 @@ export default function SoccerRotation() {
       fetch('/api/state', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ seed, shiftExclusions, shiftForceIns, shiftForcePositions, gameExclusions, lockedShifts, killedShifts, goalieMode, shiftsPerGame, players }),
+        body: JSON.stringify({ seed, shiftExclusions, shiftForceIns, shiftForcePositions, gameExclusions, lockedShifts, killedShifts, goalieMode, shiftsPerGame, players, timerHalfMin, timerIntervalMin, timerWarnSec, timerHalf, gameResults }),
       }).then(r => r.json()).then(j => {
         setSyncInfo(prev => ({ ...prev, storage: j.storage || prev.storage, savedAt: j.savedAt || prev.savedAt, error: j.error || null }));
       }).catch(() => {});
     }, 500);
     return () => clearTimeout(timer);
-  }, [seed, shiftExclusions, shiftForceIns, shiftForcePositions, gameExclusions, lockedShifts, killedShifts, goalieMode, shiftsPerGame, players, loaded]);
+  }, [seed, shiftExclusions, shiftForceIns, shiftForcePositions, gameExclusions, lockedShifts, killedShifts, goalieMode, shiftsPerGame, players, timerHalfMin, timerIntervalMin, timerWarnSec, timerHalf, gameResults, loaded]);
 
   const handleSync = useCallback(async () => {
     try {
       const state = await fetch('/api/state').then(r => r.json());
-      if (state.seed !== undefined) setSeed(state.seed);
-      if (state.shiftExclusions) setShiftExclusions(state.shiftExclusions);
-      if (state.shiftForceIns) setShiftForceIns(state.shiftForceIns);
-      if (state.shiftForcePositions) setShiftForcePositions(state.shiftForcePositions);
-      if (state.gameExclusions) setGameExclusions(state.gameExclusions);
-      if (state.lockedShifts) setLockedShifts(state.lockedShifts);
-      if (state.killedShifts) setKilledShifts(state.killedShifts);
-      if (state.goalieMode) setGoalieMode(state.goalieMode);
-      if (state.shiftsPerGame) {
-        setShiftsPerGame(Array.isArray(state.shiftsPerGame)
-          ? state.shiftsPerGame
-          : [state.shiftsPerGame, state.shiftsPerGame, state.shiftsPerGame, state.shiftsPerGame]);
-      }
-      if (state.players) setPlayers(state.players);
+      applyBlobState(state);
       setSyncInfo({ storage: state._storage || "?", savedAt: state._savedAt || null, fetchedAt: Date.now() });
     } catch(e) {}
-  }, []);
+  }, [applyBlobState]);
 
   // Undo stack — snapshot overrideable state into a ref so saveToHistory is stable
   const snapRef = useRef({});
   useEffect(() => {
     snapRef.current = { shiftExclusions, shiftForceIns, shiftForcePositions, gameExclusions, lockedShifts, killedShifts };
   }, [shiftExclusions, shiftForceIns, shiftForcePositions, gameExclusions, lockedShifts, killedShifts]);
+
+  // Always-current state ref — used by saveNow to avoid stale closures
+  const currentStateRef = useRef({});
+  useEffect(() => {
+    currentStateRef.current = { seed, shiftExclusions, shiftForceIns, shiftForcePositions, gameExclusions, lockedShifts, killedShifts, goalieMode, shiftsPerGame, players, timerHalfMin, timerIntervalMin, timerWarnSec, timerHalf, gameResults };
+  }, [seed, shiftExclusions, shiftForceIns, shiftForcePositions, gameExclusions, lockedShifts, killedShifts, goalieMode, shiftsPerGame, players, timerHalfMin, timerIntervalMin, timerWarnSec, timerHalf, gameResults]);
+
+  // Immediate save (bypasses debounce) — used for lock/kill/score to ensure cross-device visibility
+  const saveNow = useCallback(async (overrides = {}) => {
+    if (!loaded) return;
+    const payload = { ...currentStateRef.current, ...overrides };
+    try {
+      const j = await fetch('/api/state', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      }).then(r => r.json());
+      setSyncInfo(prev => ({ ...prev, storage: j.storage || prev.storage, savedAt: j.savedAt || prev.savedAt, error: j.error || null }));
+    } catch(e) {}
+  }, [loaded]);
+
+  // Poll every 15 seconds — update only if blob has a newer savedAt than ours
+  const savedAtRef = useRef(null);
+  useEffect(() => { savedAtRef.current = syncInfo.savedAt; }, [syncInfo.savedAt]);
+  useEffect(() => {
+    if (!loaded) return;
+    const id = setInterval(async () => {
+      try {
+        const state = await fetch('/api/state').then(r => r.json());
+        if (state._savedAt && savedAtRef.current && state._savedAt <= savedAtRef.current) return;
+        applyBlobState(state);
+        setSyncInfo({ storage: state._storage || "?", savedAt: state._savedAt || null, fetchedAt: Date.now() });
+      } catch(e) {}
+    }, 15000);
+    return () => clearInterval(id);
+  }, [loaded, applyBlobState]);
 
   const saveToHistory = useCallback(() => {
     setHistory(prev => [...prev.slice(-9), { ...snapRef.current }]);
@@ -143,13 +185,12 @@ export default function SoccerRotation() {
   const toggleKillShift = useCallback((gameIdx, shiftIdx) => {
     saveToHistory();
     const key = `${gameIdx}-${shiftIdx}`;
-    setKilledShifts(prev => {
-      const next = { ...prev };
-      if (next[key]) delete next[key];
-      else next[key] = true;
-      return next;
-    });
-  }, [saveToHistory]);
+    const cur = currentStateRef.current.killedShifts || {};
+    const next = { ...cur };
+    if (next[key]) delete next[key]; else next[key] = true;
+    setKilledShifts(next);
+    saveNow({ killedShifts: next });
+  }, [saveToHistory, saveNow]);
 
   const { games, totalShifts, totalPositions } = useMemo(() => {
     return generateRotation(seed, players, shiftExclusions, gameExclusions, shiftForceIns, lockedShifts, shiftForcePositions, goalieMode, shiftsPerGame, killedShifts);
@@ -277,16 +318,16 @@ export default function SoccerRotation() {
   const toggleLockShift = useCallback((gameIdx, shiftIdx) => {
     saveToHistory();
     const key = `${gameIdx}-${shiftIdx}`;
-    setLockedShifts(prev => {
-      const next = { ...prev };
-      if (next[key]) { delete next[key]; }
-      else {
-        const shift = games[gameIdx]?.[shiftIdx];
-        if (shift) next[key] = { ...shift };
-      }
-      return next;
-    });
-  }, [games, saveToHistory]);
+    const cur = currentStateRef.current.lockedShifts || {};
+    const next = { ...cur };
+    if (next[key]) { delete next[key]; }
+    else {
+      const shift = games[gameIdx]?.[shiftIdx];
+      if (shift) next[key] = { ...shift };
+    }
+    setLockedShifts(next);
+    saveNow({ lockedShifts: next });
+  }, [games, saveToHistory, saveNow]);
 
   const openShiftEditor = useCallback((g, s) => {
     const current = lockedShifts[`${g}-${s}`] || games[g]?.[s] || {};
@@ -299,9 +340,11 @@ export default function SoccerRotation() {
     if (!shiftEditorModal) return;
     saveToHistory();
     const key = `${shiftEditorModal.g}-${shiftEditorModal.s}`;
-    setLockedShifts(prev => ({ ...prev, [key]: { ...editorDraft } }));
+    const next = { ...(currentStateRef.current.lockedShifts || {}), [key]: { ...editorDraft } };
+    setLockedShifts(next);
     setShiftEditorModal(null);
-  }, [shiftEditorModal, editorDraft, saveToHistory]);
+    saveNow({ lockedShifts: next });
+  }, [shiftEditorModal, editorDraft, saveToHistory, saveNow]);
 
   const isGameExcluded  = (gi, name) => (gameExclusions[gi] || []).includes(name);
   const isShiftExcluded = (gi, si, name) => (shiftExclusions[`${gi}-${si}`] || []).includes(name);
@@ -395,7 +438,12 @@ export default function SoccerRotation() {
       <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet" />
 
       <h1 style={{ fontSize: "20px", fontWeight: 700, margin: "0 0 2px", letterSpacing: "-0.5px" }}>⚽ Deathwalkers Roster Rotation</h1>
-      <MatchTimer />
+      <MatchTimer
+        halfMin={timerHalfMin} setHalfMin={v => { setTimerHalfMin(v); saveNow({ timerHalfMin: v }); }}
+        intervalMin={timerIntervalMin} setIntervalMin={v => { setTimerIntervalMin(v); saveNow({ timerIntervalMin: v }); }}
+        warnSec={timerWarnSec} setWarnSec={v => { setTimerWarnSec(v); saveNow({ timerWarnSec: v }); }}
+        half={timerHalf} setHalf={v => { setTimerHalf(v); saveNow({ timerHalf: v }); }}
+      />
       <p style={{ fontSize: "11px", color: "#666", margin: "0 0 4px", lineHeight: 1.5 }}>
         Tap <b>badge</b> or <b>–</b> → set / change position&nbsp;&nbsp;·&nbsp;&nbsp;
         Tap <b style={{ color: "#991b1b" }}>✕</b> → undo&nbsp;&nbsp;·&nbsp;&nbsp;
@@ -449,15 +497,24 @@ export default function SoccerRotation() {
       <div style={S.tabs}>
         {[0, 1, 2, 3].map(g => {
           const ec = exCount(g);
+          const result = gameResults[g];
           return <button key={g} onClick={() => setActiveGame(g)} style={S.tab(activeGame === g)}>
-            Game {g + 1}{ec > 0 && <span style={{ color: activeGame === g ? "#fca5a5" : "#dc2626", marginLeft: "4px" }}>−{ec}</span>}
+            <span style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: "1px" }}>
+              <span>
+                {result ? "✅" : ""} G{g + 1}
+                {ec > 0 && <span style={{ color: activeGame === g ? "#fca5a5" : "#dc2626", marginLeft: "3px" }}>−{ec}</span>}
+              </span>
+              {result && <span style={{ fontSize: "9px", opacity: 0.85, fontFamily: "'DM Mono'", letterSpacing: "0.5px" }}>
+                {result.home}–{result.away}
+              </span>}
+            </span>
           </button>;
         })}
       </div>
 
 
-      {/* Per-game shifts selector */}
-      <div style={{ display: "flex", gap: "4px", alignItems: "center", marginBottom: "8px", flexWrap: "wrap" }}>
+      {/* Per-game shifts selector + result */}
+      <div style={{ display: "flex", gap: "4px", alignItems: "center", marginBottom: "6px", flexWrap: "wrap" }}>
         <span style={{ fontSize: "10px", fontWeight: 600, color: "#888", marginRight: "2px" }}>
           G{activeGame + 1} shifts:
         </span>
@@ -477,6 +534,51 @@ export default function SoccerRotation() {
           all: [{shiftsPerGame.map((n, i) => i === activeGame ? <b key={i} style={{color:"#1a1a2e"}}>{n}</b> : <span key={i}>{n}</span>).reduce((a, c, i) => i === 0 ? [c] : [...a, ", ", c], [])}]
         </span>
       </div>
+
+      {/* Game result row */}
+      {(() => {
+        const result = gameResults[activeGame];
+        const inputS = { width: "38px", padding: "4px 6px", borderRadius: "6px", border: "1px solid #e5e7eb", fontSize: "13px", fontFamily: "'DM Mono'", fontWeight: 700, textAlign: "center" };
+        if (result) return (
+          <div style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: "8px" }}>
+            <span style={{ fontSize: "10px", fontWeight: 600, color: "#888" }}>Final:</span>
+            <span style={{ fontFamily: "'DM Mono'", fontWeight: 800, fontSize: "15px" }}>
+              {result.home} – {result.away}
+            </span>
+            <button onClick={() => {
+              const next = { ...gameResults };
+              delete next[activeGame];
+              setGameResults(next);
+              saveNow({ gameResults: next });
+              setScoreForm({ home: '', away: '' });
+            }} style={{ padding: "3px 8px", borderRadius: "5px", border: "1px solid #fca5a5", background: "#fff5f5", color: "#dc2626", fontSize: "10px", fontWeight: 600, cursor: "pointer" }}>
+              clear
+            </button>
+          </div>
+        );
+        return (
+          <div style={{ display: "flex", alignItems: "center", gap: "6px", marginBottom: "8px" }}>
+            <span style={{ fontSize: "10px", fontWeight: 600, color: "#888" }}>G{activeGame + 1} result:</span>
+            <input type="number" min="0" max="99" placeholder="Us" value={scoreForm.home}
+              onChange={e => setScoreForm(p => ({ ...p, home: e.target.value }))}
+              style={inputS} />
+            <span style={{ fontWeight: 700, color: "#888" }}>–</span>
+            <input type="number" min="0" max="99" placeholder="Them" value={scoreForm.away}
+              onChange={e => setScoreForm(p => ({ ...p, away: e.target.value }))}
+              style={inputS} />
+            <button onClick={() => {
+              const h = parseInt(scoreForm.home, 10);
+              const a = parseInt(scoreForm.away, 10);
+              if (isNaN(h) || isNaN(a)) return;
+              const next = { ...gameResults, [activeGame]: { home: h, away: a } };
+              setGameResults(next);
+              saveNow({ gameResults: next });
+            }} style={{ padding: "4px 10px", borderRadius: "6px", border: "none", background: "#1a1a2e", color: "#fff", fontSize: "11px", fontWeight: 700, cursor: "pointer" }}>
+              ✅ Done
+            </button>
+          </div>
+        );
+      })()}
 
       {/* Rotation grid */}
       <div style={S.grid}>
@@ -858,8 +960,8 @@ export default function SoccerRotation() {
 }
 
 // ── Match Timer ──
-// Default: 20 min halves, 5 min swap intervals, 1 min "get subs ready" warning,
-// auto-stop at halftime with a loud alarm.
+// Settings (halfMin, intervalMin, warnSec, half) are synced via parent state.
+// Running state and elapsed time are device-local.
 function playBeep(ctx, freqs, durationMs = 250, gap = 80) {
   if (!ctx) return;
   try {
@@ -882,13 +984,9 @@ function playBeep(ctx, freqs, durationMs = 250, gap = 80) {
   } catch(e) {}
 }
 
-function MatchTimer() {
+function MatchTimer({ halfMin, setHalfMin, intervalMin, setIntervalMin, warnSec, setWarnSec, half, setHalf }) {
   const [expanded, setExpanded] = useState(false);
-  const [halfMin, setHalfMin] = useState(20);
-  const [intervalMin, setIntervalMin] = useState(5);
-  const [warnSec, setWarnSec] = useState(60);
   const [running, setRunning] = useState(false);
-  const [half, setHalf] = useState(1);
   const startRef = useRef(null);
   const baseRef = useRef(0);
   const lastShiftRef = useRef(0);
@@ -897,6 +995,7 @@ function MatchTimer() {
   const endRef = useRef(false);
   const audioCtxRef = useRef(null);
   const [, setTick] = useState(0);
+  const [, forceRender] = useState(0); // used to force a re-render from refs only (e.g. reset while stopped)
   const [flash, setFlash] = useState(null);
 
   const elapsed = (running && startRef.current ? Date.now() - startRef.current : 0) + baseRef.current;
@@ -992,10 +1091,29 @@ function MatchTimer() {
     halfWarnRef.current = false;
     endRef.current = false;
     setRunning(false);
+    forceRender(x => x + 1); // ensure display updates even if running was already false
   };
   const goNextHalf = () => {
-    reset();
-    setHalf(h => (h === 1 ? 2 : 1));
+    const nextHalf = half === 1 ? 2 : 1;
+    startRef.current = null;
+    baseRef.current = 0;
+    lastShiftRef.current = 0;
+    lastWarnRef.current = 0;
+    halfWarnRef.current = false;
+    endRef.current = false;
+    setRunning(false);
+    setHalf(nextHalf);
+    forceRender(x => x + 1);
+  };
+  const addSeconds = (sec) => {
+    const ms = sec * 1000;
+    if (running && startRef.current) {
+      startRef.current += ms; // shift start forward → reduces elapsed → adds to remaining
+    } else {
+      baseRef.current = Math.max(0, baseRef.current - ms);
+    }
+    endRef.current = false; // allow halftime alarm to fire again
+    forceRender(x => x + 1);
   };
   const testBeep = () => { ensureAudio(); playBeep(audioCtxRef.current, [660], 200); };
 
@@ -1101,6 +1219,7 @@ function MatchTimer() {
           )}
           <button onClick={reset} style={btnS("#666")}>↺ Reset</button>
           <button onClick={goNextHalf} style={btnS("#7c3aed")}>→ {half === 1 ? "H2" : "H1"}</button>
+          <button onClick={() => addSeconds(30)} style={btnS("#2563eb")}>+30s</button>
           <button onClick={testBeep} style={{ ...btnS("transparent"), color: running ? "#94a3b8" : "#666", border: `1px solid ${running ? "#94a3b8" : "#cbd5e1"}` }}>🔊 test</button>
         </div>
         <div style={{ fontSize: "10px", opacity: 0.85, display: "flex", flexWrap: "wrap", gap: "10px", alignItems: "center" }}>
