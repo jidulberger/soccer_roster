@@ -867,6 +867,7 @@ export default function SoccerRotation() {
         pickingSlot={editorPickingSlot}
         players={players}
         lockedShifts={lockedShifts}
+        killedShifts={killedShifts}
         shiftsPerHalf={shiftsPerHalf}
         S={S}
         onClose={() => setShiftEditorModal(null)}
@@ -1309,7 +1310,7 @@ function MatchTimer({ halfMin, setHalfMin, intervalMin, setIntervalMin, warnSec,
 // ── Shift Editor Modal ──
 // Rendered via portal so position:fixed is relative to the viewport, not any
 // ancestor. Tap a column header (H1·1 … H2·4) to open.
-function ShiftEditorModal({ modal, draft, pickingSlot, players, lockedShifts, shiftsPerHalf, S, onClose, onSave, onUnlock, onKill, setDraft, setPickingSlot }) {
+function ShiftEditorModal({ modal, draft, pickingSlot, players, lockedShifts, killedShifts, shiftsPerHalf, S, onClose, onSave, onUnlock, onKill, setDraft, setPickingSlot }) {
   if (!modal) return null;
   const { g, s } = modal;
   const sph = shiftsPerHalf || 4;
@@ -1396,9 +1397,14 @@ function ShiftEditorModal({ modal, draft, pickingSlot, players, lockedShifts, sh
               {lockedShifts[`${g}-${s}`] && (
                 <button onClick={onUnlock} style={{ ...S.btn("#666"), fontSize: "11px", padding: "9px 12px" }}>Unlock</button>
               )}
-              {onKill && (
-                <button onClick={onKill} style={{ ...S.btn("#dc2626"), fontSize: "11px", padding: "9px 12px" }}>💀 Kill</button>
-              )}
+              {onKill && (() => {
+                const isKilled = !!(killedShifts && killedShifts[`${g}-${s}`]);
+                return (
+                  <button onClick={onKill} style={{ ...S.btn(isKilled ? "#16a34a" : "#dc2626"), fontSize: "11px", padding: "9px 12px" }}>
+                    {isKilled ? "↩ Unkill" : "💀 Kill"}
+                  </button>
+                );
+              })()}
             </div>
           </>
         )}
