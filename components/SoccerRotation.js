@@ -395,6 +395,7 @@ export default function SoccerRotation() {
       <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet" />
 
       <h1 style={{ fontSize: "20px", fontWeight: 700, margin: "0 0 2px", letterSpacing: "-0.5px" }}>⚽ Deathwalkers Roster Rotation</h1>
+      <MatchTimer />
       <p style={{ fontSize: "11px", color: "#666", margin: "0 0 4px", lineHeight: 1.5 }}>
         Tap <b>badge</b> or <b>–</b> → set / change position&nbsp;&nbsp;·&nbsp;&nbsp;
         Tap <b style={{ color: "#991b1b" }}>✕</b> → undo&nbsp;&nbsp;·&nbsp;&nbsp;
@@ -853,6 +854,274 @@ export default function SoccerRotation() {
         document.body
       )}
     </div>
+  );
+}
+
+// ── Match Timer ──
+// Default: 20 min halves, 5 min swap intervals, 1 min "get subs ready" warning,
+// auto-stop at halftime with a loud alarm.
+function playBeep(ctx, freqs, durationMs = 250, gap = 80) {
+  if (!ctx) return;
+  try {
+    const arr = Array.isArray(freqs) ? freqs : [freqs];
+    arr.forEach((f, i) => {
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.frequency.value = f;
+      osc.type = "sine";
+      const t0 = ctx.currentTime + i * (durationMs / 1000 + gap / 1000);
+      const t1 = t0 + durationMs / 1000;
+      gain.gain.setValueAtTime(0, t0);
+      gain.gain.linearRampToValueAtTime(0.35, t0 + 0.02);
+      gain.gain.setValueAtTime(0.35, t1 - 0.05);
+      gain.gain.linearRampToValueAtTime(0, t1);
+      osc.connect(gain).connect(ctx.destination);
+      osc.start(t0);
+      osc.stop(t1 + 0.02);
+    });
+  } catch(e) {}
+}
+
+function MatchTimer() {
+  const [expanded, setExpanded] = useState(false);
+  const [halfMin, setHalfMin] = useState(20);
+  const [intervalMin, setIntervalMin] = useState(5);
+  const [warnSec, setWarnSec] = useState(60);
+  const [running, setRunning] = useState(false);
+  const [half, setHalf] = useState(1);
+  const startRef = useRef(null);
+  const baseRef = useRef(0);
+  const lastShiftRef = useRef(0);
+  const lastWarnRef = useRef(0);
+  const halfWarnRef = useRef(false);
+  const endRef = useRef(false);
+  const audioCtxRef = useRef(null);
+  const [, setTick] = useState(0);
+  const [flash, setFlash] = useState(null);
+
+  const elapsed = (running && startRef.current ? Date.now() - startRef.current : 0) + baseRef.current;
+  const halfMs = halfMin * 60000;
+  const intMs = intervalMin * 60000;
+  const warnMs = warnSec * 1000;
+  const remaining = Math.max(0, halfMs - elapsed);
+  const totalShifts = Math.max(1, Math.ceil(halfMs / intMs));
+  const currentShift = Math.min(totalShifts, Math.floor(elapsed / intMs) + 1);
+
+  useEffect(() => {
+    if (!running) return;
+    const id = setInterval(() => setTick(t => t + 1), 200);
+    return () => clearInterval(id);
+  }, [running]);
+
+  useEffect(() => {
+    if (!running) return;
+    // Halftime reached → stop timer with alarm
+    if (elapsed >= halfMs && !endRef.current) {
+      endRef.current = true;
+      playBeep(audioCtxRef.current, [880, 660, 880, 660], 350, 80);
+      try { navigator.vibrate?.([400, 100, 400, 100, 400]); } catch(e) {}
+      baseRef.current = halfMs;
+      startRef.current = null;
+      setRunning(false);
+      setFlash({ kind: "halftime", ts: Date.now() });
+      return;
+    }
+    // Halftime warning (warnSec before halftime)
+    if (!halfWarnRef.current && elapsed >= halfMs - warnMs && elapsed < halfMs) {
+      halfWarnRef.current = true;
+      playBeep(audioCtxRef.current, [520, 520], 220, 100);
+      try { navigator.vibrate?.([150, 80, 150]); } catch(e) {}
+      setFlash({ kind: "warnHalf", ts: Date.now() });
+      return;
+    }
+    // Swap mark
+    const shiftIdx = Math.floor(elapsed / intMs);
+    if (shiftIdx > lastShiftRef.current && shiftIdx * intMs < halfMs) {
+      lastShiftRef.current = shiftIdx;
+      playBeep(audioCtxRef.current, [660, 880], 280, 60);
+      try { navigator.vibrate?.([300, 100, 300]); } catch(e) {}
+      setFlash({ kind: "swap", ts: Date.now() });
+      return;
+    }
+    // Swap warning (warnSec before next swap mark)
+    const warnIdx = Math.floor((elapsed + warnMs) / intMs);
+    if (warnIdx > lastWarnRef.current) {
+      lastWarnRef.current = warnIdx;
+      const upcoming = warnIdx * intMs;
+      if (upcoming < halfMs) {
+        playBeep(audioCtxRef.current, [520], 220);
+        try { navigator.vibrate?.([150]); } catch(e) {}
+        setFlash({ kind: "warn", ts: Date.now() });
+      }
+    }
+  });
+
+  useEffect(() => {
+    if (!flash) return;
+    const dur = flash.kind === "halftime" ? 10000 : flash.kind.startsWith("warn") ? 2500 : 3500;
+    const id = setTimeout(() => setFlash(null), dur);
+    return () => clearTimeout(id);
+  }, [flash]);
+
+  const ensureAudio = () => {
+    try {
+      if (!audioCtxRef.current) {
+        const Ctx = window.AudioContext || window.webkitAudioContext;
+        if (Ctx) audioCtxRef.current = new Ctx();
+      }
+      if (audioCtxRef.current?.state === "suspended") audioCtxRef.current.resume();
+    } catch(e) {}
+  };
+
+  const start = () => {
+    ensureAudio();
+    if (elapsed >= halfMs) return;
+    startRef.current = Date.now();
+    setRunning(true);
+  };
+  const pause = () => {
+    baseRef.current = elapsed;
+    startRef.current = null;
+    setRunning(false);
+  };
+  const reset = () => {
+    startRef.current = null;
+    baseRef.current = 0;
+    lastShiftRef.current = 0;
+    lastWarnRef.current = 0;
+    halfWarnRef.current = false;
+    endRef.current = false;
+    setRunning(false);
+  };
+  const goNextHalf = () => {
+    reset();
+    setHalf(h => (h === 1 ? 2 : 1));
+  };
+  const testBeep = () => { ensureAudio(); playBeep(audioCtxRef.current, [660], 200); };
+
+  const mm = Math.floor(remaining / 60000);
+  const ss = Math.floor((remaining % 60000) / 1000);
+  const fmt = `${mm}:${String(ss).padStart(2, "0")}`;
+  const nextMarkMs = Math.min(halfMs, (Math.floor(elapsed / intMs) + 1) * intMs);
+  const tilNext = Math.max(0, nextMarkMs - elapsed);
+  const tnMm = Math.floor(tilNext / 60000);
+  const tnSs = Math.floor((tilNext % 60000) / 1000);
+
+  const btnS = (bg) => ({
+    padding: "7px 12px", borderRadius: "6px", border: "none",
+    background: bg, color: "#fff", fontWeight: 700, fontSize: "12px",
+    fontFamily: "'DM Sans'", cursor: "pointer",
+  });
+  const chip = (active, disabled) => ({
+    padding: "3px 7px", borderRadius: "4px", border: "none",
+    cursor: disabled ? "not-allowed" : "pointer", marginLeft: "3px",
+    background: active ? "#fff" : "rgba(255,255,255,0.08)",
+    color: active ? "#1a1a2e" : "inherit", opacity: disabled ? 0.5 : 1,
+    fontFamily: "'DM Mono'", fontWeight: 700, fontSize: "10px",
+  });
+
+  const flashMap = {
+    warn:     { bg: "rgba(234,179,8,0.6)",  icon: "⚠️", title: "SUBS READY",     sub: `${Math.round(warnSec)}s until swap` },
+    warnHalf: { bg: "rgba(234,88,12,0.65)", icon: "⚠️", title: "HALFTIME SOON",  sub: `${Math.round(warnSec)}s left` },
+    swap:     { bg: "rgba(34,197,94,0.65)", icon: "🔔", title: "SWAP SHIFTS",    sub: `Shift ${currentShift} of ${totalShifts}` },
+    halftime: { bg: "rgba(220,38,38,0.72)", icon: "🛑", title: "HALFTIME",       sub: `H${half} complete` },
+  };
+  const FlashOverlay = flash && createPortal(
+    <div onClick={() => setFlash(null)} style={{
+      position: "fixed", inset: 0, zIndex: 10000, background: flashMap[flash.kind].bg,
+      display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer",
+    }}>
+      <div style={{
+        background: "#fff", padding: "28px 40px", borderRadius: "20px",
+        fontFamily: "'DM Sans'", fontWeight: 800, fontSize: "30px", color: "#1a1a2e",
+        textAlign: "center", boxShadow: "0 20px 60px rgba(0,0,0,0.4)", lineHeight: 1.3,
+      }}>
+        <div style={{ fontSize: "48px", marginBottom: "6px" }}>{flashMap[flash.kind].icon}</div>
+        {flashMap[flash.kind].title}
+        <div style={{ fontSize: "14px", color: "#666", fontWeight: 600, marginTop: "8px" }}>{flashMap[flash.kind].sub}</div>
+        <div style={{ fontSize: "10px", color: "#aaa", fontWeight: 500, marginTop: "10px" }}>tap to dismiss</div>
+      </div>
+    </div>,
+    document.body
+  );
+
+  if (!expanded) {
+    return (
+      <div style={{ marginBottom: "10px" }}>
+        <button onClick={() => setExpanded(true)} style={{
+          padding: "6px 12px", borderRadius: "8px", border: "1px solid #e5e7eb",
+          background: running ? "#1a1a2e" : "#fff", color: running ? "#fff" : "#1a1a2e",
+          fontFamily: "'DM Sans'", fontWeight: 600, fontSize: "11px", cursor: "pointer",
+          display: "inline-flex", alignItems: "center", gap: "6px",
+        }}>
+          ⏱ {running ? `H${half} ${fmt} · shift ${currentShift}/${totalShifts}` : "Match Timer"}
+        </button>
+        {FlashOverlay}
+      </div>
+    );
+  }
+
+  return (
+    <>
+      {FlashOverlay}
+      <div style={{
+        marginBottom: "12px", padding: "12px 14px", border: "2px solid #1a1a2e",
+        borderRadius: "12px", background: running ? "#1a1a2e" : "#fff",
+        color: running ? "#fff" : "#1a1a2e",
+      }}>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "8px" }}>
+          <span style={{ fontWeight: 700, fontSize: "12px" }}>⏱ Match Timer · H{half}</span>
+          <button onClick={() => setExpanded(false)} style={{
+            background: "none", border: "none", color: running ? "#94a3b8" : "#666",
+            cursor: "pointer", fontSize: "11px", padding: "0 4px",
+          }}>hide</button>
+        </div>
+        <div style={{ display: "flex", alignItems: "baseline", gap: "16px", marginBottom: "8px", flexWrap: "wrap" }}>
+          <span style={{ fontFamily: "'DM Mono'", fontWeight: 700, fontSize: "44px", lineHeight: 1 }}>{fmt}</span>
+          <span style={{ fontSize: "11px", opacity: 0.85 }}>
+            shift {currentShift}/{totalShifts} · next swap in {tnMm}:{String(tnSs).padStart(2, "0")}
+          </span>
+        </div>
+        <div style={{ height: "10px", background: running ? "#334155" : "#f0f0f0", borderRadius: "6px",
+          position: "relative", overflow: "hidden", marginBottom: "10px" }}>
+          <div style={{ width: `${Math.min(100, (elapsed / halfMs) * 100)}%`, height: "100%",
+            background: elapsed >= halfMs ? "#dc2626" : "#22c55e", transition: "width 0.2s linear" }} />
+          {Array.from({ length: totalShifts - 1 }, (_, i) => i + 1).map(i => (
+            <div key={i} style={{
+              position: "absolute", left: `${(i / totalShifts) * 100}%`, top: 0, bottom: 0,
+              width: "2px", background: "rgba(0,0,0,0.4)",
+            }} />
+          ))}
+        </div>
+        <div style={{ display: "flex", gap: "6px", flexWrap: "wrap", alignItems: "center", marginBottom: "8px" }}>
+          {!running ? (
+            <button onClick={start} style={btnS("#22c55e")}>▶ Start</button>
+          ) : (
+            <button onClick={pause} style={btnS("#eab308")}>⏸ Pause</button>
+          )}
+          <button onClick={reset} style={btnS("#666")}>↺ Reset</button>
+          <button onClick={goNextHalf} style={btnS("#7c3aed")}>→ {half === 1 ? "H2" : "H1"}</button>
+          <button onClick={testBeep} style={{ ...btnS("transparent"), color: running ? "#94a3b8" : "#666", border: `1px solid ${running ? "#94a3b8" : "#cbd5e1"}` }}>🔊 test</button>
+        </div>
+        <div style={{ fontSize: "10px", opacity: 0.85, display: "flex", flexWrap: "wrap", gap: "10px", alignItems: "center" }}>
+          <span>half:
+            {[15, 20, 25, 30].map(n => (
+              <button key={n} onClick={() => { if (!running) setHalfMin(n); }} style={chip(halfMin === n, running)}>{n}m</button>
+            ))}
+          </span>
+          <span>swap:
+            {[3, 5, 7, 10].map(n => (
+              <button key={n} onClick={() => { if (!running) setIntervalMin(n); }} style={chip(intervalMin === n, running)}>{n}m</button>
+            ))}
+          </span>
+          <span>warn:
+            {[30, 60, 90].map(n => (
+              <button key={n} onClick={() => { if (!running) setWarnSec(n); }} style={chip(warnSec === n, running)}>{n}s</button>
+            ))}
+          </span>
+        </div>
+      </div>
+    </>
   );
 }
 
