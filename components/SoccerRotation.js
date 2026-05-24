@@ -47,6 +47,7 @@ export default function SoccerRotation() {
   const [editorDraft, setEditorDraft] = useState({ G: null, D: null, R1: null, R2: null, O: null });
   const [editorPickingSlot, setEditorPickingSlot] = useState(null); // "G"|"D"|"R1"|"R2"|"O"|null
   const [syncInfo, setSyncInfo] = useState({ storage: "?", savedAt: null, fetchedAt: null, error: null });
+  const [syncFlash, setSyncFlash] = useState(false); // brief green glow when poll picks up remote changes
   const [totalsTab, setTotalsTab] = useState("total"); // "this" | "sofar" | "total"
   const [timerHalfMin, setTimerHalfMin] = useState(20);
   const [timerIntervalMin, setTimerIntervalMin] = useState(5);
@@ -178,6 +179,8 @@ export default function SoccerRotation() {
           skipNextSaveRef.current = true; // prevent debounce from re-saving this polled data
           applyBlobState(state);
           setSyncInfo({ storage: state._storage || "?", savedAt: state._savedAt, fetchedAt: Date.now() });
+          setSyncFlash(true);
+          setTimeout(() => setSyncFlash(false), 1200);
         } else {
           setSyncInfo(prev => ({ ...prev, fetchedAt: Date.now() }));
         }
@@ -829,15 +832,19 @@ export default function SoccerRotation() {
           <div style={{ display: "flex", gap: "8px", flexWrap: "wrap", alignItems: "center" }}>
             <button onClick={() => setSeed(s => s + 1)} style={S.btn()}>🔄 Regenerate</button>
             <button onClick={handleSync} style={S.btn("#2563eb")}>📡 Sync</button>
-            <div title={`Backend: ${syncInfo.storage}. Saved: ${syncInfo.savedAt ? new Date(syncInfo.savedAt).toLocaleTimeString() : "—"}. Fetched: ${syncInfo.fetchedAt ? new Date(syncInfo.fetchedAt).toLocaleTimeString() : "—"}.${syncInfo.error ? ` Error: ${syncInfo.error}` : ""}`}
-              style={{ display: "flex", alignItems: "center", gap: "5px", padding: "6px 10px", background: "#f9fafb", borderRadius: "8px", border: "1px solid #e5e7eb", fontSize: "10px", fontFamily: "'DM Mono'" }}>
+            <div title={`Backend: ${syncInfo.storage}. Blob version: ${syncInfo.savedAt || "—"}. Fetched: ${syncInfo.fetchedAt ? new Date(syncInfo.fetchedAt).toLocaleTimeString() : "—"}.${syncInfo.error ? ` Error: ${syncInfo.error}` : ""}`}
+              style={{ display: "flex", alignItems: "center", gap: "5px", padding: "6px 10px",
+                background: syncFlash ? "#dcfce7" : "#f9fafb",
+                borderRadius: "8px", border: syncFlash ? "1px solid #22c55e" : "1px solid #e5e7eb",
+                fontSize: "10px", fontFamily: "'DM Mono'",
+                transition: "background 0.3s, border 0.3s" }}>
               <span style={{
                 width: "8px", height: "8px", borderRadius: "50%",
                 background: syncInfo.storage === "blob" ? "#22c55e" : syncInfo.storage.startsWith("blob") ? "#eab308" : "#ef4444",
               }} />
               <span style={{ color: "#666", fontWeight: 600 }}>{syncInfo.storage}</span>
               <span style={{ color: "#999" }}>
-                · save {syncInfo.savedAt ? new Date(syncInfo.savedAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" }) : "—"}
+                {" · blob "}<b style={{ color: "#1a1a2e" }}>{syncInfo.savedAt ? new Date(syncInfo.savedAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" }) : "—"}</b>
                 {" · fetch "}{syncInfo.fetchedAt ? new Date(syncInfo.fetchedAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" }) : "—"}
               </span>
             </div>
