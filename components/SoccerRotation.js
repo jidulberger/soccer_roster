@@ -372,11 +372,36 @@ export default function SoccerRotation() {
   const saveShiftEditor = useCallback(() => {
     if (!shiftEditorModal) return;
     saveToHistory();
-    const key = `${shiftEditorModal.g}-${shiftEditorModal.s}`;
-    const next = { ...(currentStateRef.current.lockedShifts || {}), [key]: { ...editorDraft } };
-    setLockedShifts(next);
+    const { g, s } = shiftEditorModal;
+    const key = `${g}-${s}`;
+    const state = currentStateRef.current;
+    const newLocks = { ...(state.lockedShifts || {}), [key]: { ...editorDraft } };
+    let newForcePositions = { ...(state.shiftForcePositions || {}) };
+
+    // Propagate goalie to partner shifts in the same goalie block so the
+    // user doesn't have to edit each shift individually.
+    if (editorDraft.G) {
+      const sg = Array.isArray(state.shiftsPerGame) ? (state.shiftsPerGame[g] || 8) : 8;
+      const blockSize = state.goalieMode === 'halves' ? (sg / 2) : 2;
+      const blockStart = Math.floor(s / blockSize) * blockSize;
+      for (let ps = blockStart; ps < Math.min(blockStart + blockSize, sg); ps++) {
+        if (ps === s) continue;
+        const pk = `${g}-${ps}`;
+        if (newLocks[pk]) {
+          newLocks[pk] = { ...newLocks[pk], G: editorDraft.G };
+        } else {
+          // Force the goalie for this unlocked shift, remove any prior force-G
+          const existing = newForcePositions[pk] || {};
+          const cleaned = Object.fromEntries(Object.entries(existing).filter(([, pos]) => pos !== 'G'));
+          newForcePositions[pk] = { ...cleaned, [editorDraft.G]: 'G' };
+        }
+      }
+    }
+
+    setLockedShifts(newLocks);
+    setShiftForcePositions(newForcePositions);
     setShiftEditorModal(null);
-    saveNow({ lockedShifts: next });
+    saveNow({ lockedShifts: newLocks, shiftForcePositions: newForcePositions });
   }, [shiftEditorModal, editorDraft, saveToHistory, saveNow]);
 
   const isGameExcluded  = (gi, name) => (gameExclusions[gi] || []).includes(name);
@@ -1374,7 +1399,12 @@ function ShiftEditorModal({ modal, draft, pickingSlot, players, lockedShifts, ki
       <div style={cardStyle} onClick={e => e.stopPropagation()}>
 
         <div style={{ padding: "14px 16px", background: "#1a1a2e", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-          <span style={{ color: "#fff", fontWeight: 700, fontSize: "15px", fontFamily: "'DM Sans'" }}>{shiftLabel}</span>
+          <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+            <span style={{ color: "#fff", fontWeight: 700, fontSize: "15px", fontFamily: "'DM Sans'" }}>{shiftLabel}</span>
+            {lockedShifts[`${g}-${s}`] && (
+              <span style={{ background: "#22c55e", color: "#fff", fontSize: "9px", fontWeight: 800, padding: "2px 6px", borderRadius: "4px", letterSpacing: "0.05em" }}>FROZEN</span>
+            )}
+          </div>
           <button onClick={onClose} style={{ background: "none", border: "none", color: "#94a3b8", fontSize: "20px", cursor: "pointer", lineHeight: 1, padding: "4px 8px" }}>✕</button>
         </div>
 
@@ -1423,16 +1453,26 @@ function ShiftEditorModal({ modal, draft, pickingSlot, players, lockedShifts, ki
                 <span style={{ fontSize: "16px", color: "#cbd5e1" }}>›</span>
               </div>
             ))}
-            <div style={{ padding: "12px 16px", display: "flex", gap: "8px", borderTop: "2px solid #f0f0f0" }}>
-              <button onClick={onSave} style={{ ...S.btn(), flex: 1, fontSize: "13px" }}>🔒 Save & Lock</button>
-              {lockedShifts[`${g}-${s}`] && (
-                <button onClick={onUnlock} style={{ ...S.btn("#666"), fontSize: "11px", padding: "9px 12px" }}>Unlock</button>
-              )}
-              {onKill && (
-                <button onClick={onKill} style={{ ...S.btn(killedShifts && killedShifts[`${g}-${s}`] ? "#16a34a" : "#dc2626"), fontSize: "11px", padding: "9px 12px" }}>
-                  {killedShifts && killedShifts[`${g}-${s}`] ? "↩ Unkill" : "💀 Kill"}
+            <div style={{ padding: "12px 16px", borderTop: "2px solid #f0f0f0" }}>
+              <div style={{ display: "flex", gap: "8px" }}>
+                <button onClick={onSave} style={{ ...S.btn(), flex: 1, fontSize: "13px" }}>
+                  {lockedShifts[`${g}-${s}`] ? "💾 Save Changes" : "🔒 Freeze Lineup"}
                 </button>
-              )}
+                {lockedShifts[`${g}-${s}`] && (
+                  <button onClick={onUnlock} title="Let the algorithm control this shift" style={{ ...S.btn("#6b7280"), fontSize: "11px", padding: "9px 12px" }}>🔓 Unfreeze</button>
+                )}
+                {onKill && (
+                  <button onClick={onKill} style={{ ...S.btn(killedShifts && killedShifts[`${g}-${s}`] ? "#16a34a" : "#dc2626"), fontSize: "11px", padding: "9px 12px" }}>
+                    {killedShifts && killedShifts[`${g}-${s}`] ? "↩ Unkill" : "💀 Kill"}
+                  </button>
+                )}
+              </div>
+              <p style={{ margin: "8px 0 0", fontSize: "10px", textAlign: "center",
+                color: lockedShifts[`${g}-${s}`] ? "#22c55e" : "#94a3b8" }}>
+                {lockedShifts[`${g}-${s}`]
+                  ? "🔒 Frozen — Regenerate won't change this shift."
+                  : "Freezing pins this lineup so Regenerate won't touch it."}
+              </p>
             </div>
           </>
         )}
