@@ -540,7 +540,7 @@ export default function SoccerRotation() {
       {/* Game result row */}
       {(() => {
         const result = gameResults[activeGame];
-        const inputS = { width: "38px", padding: "4px 6px", borderRadius: "6px", border: "1px solid #e5e7eb", fontSize: "13px", fontFamily: "'DM Mono'", fontWeight: 700, textAlign: "center" };
+        const inputS = { width: "56px", padding: "4px 6px", borderRadius: "6px", border: "1px solid #e5e7eb", fontSize: "13px", fontFamily: "'DM Mono'", fontWeight: 700, textAlign: "center" };
         if (result) return (
           <div style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: "8px" }}>
             <span style={{ fontSize: "10px", fontWeight: 600, color: "#888" }}>Final:</span>
