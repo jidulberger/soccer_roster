@@ -159,11 +159,15 @@ export default function SoccerRotation() {
     const id = setInterval(async () => {
       try {
         const state = await fetch('/api/state').then(r => r.json());
-        if (state._savedAt && state._savedAt <= lastSeenSavedAtRef.current) return;
-        lastSeenSavedAtRef.current = state._savedAt || 0;
-        skipNextSaveRef.current = true; // prevent debounce from re-saving this polled data
-        applyBlobState(state);
-        setSyncInfo({ storage: state._storage || "?", savedAt: state._savedAt || null, fetchedAt: Date.now() });
+        const isNewer = state._savedAt && state._savedAt > lastSeenSavedAtRef.current;
+        if (isNewer) {
+          lastSeenSavedAtRef.current = state._savedAt;
+          skipNextSaveRef.current = true; // prevent debounce from re-saving this polled data
+          applyBlobState(state);
+          setSyncInfo({ storage: state._storage || "?", savedAt: state._savedAt, fetchedAt: Date.now() });
+        } else {
+          setSyncInfo(prev => ({ ...prev, fetchedAt: Date.now() }));
+        }
       } catch(e) {}
     }, 5000);
     return () => clearInterval(id);
