@@ -288,6 +288,50 @@ describe('generateRotation — shift distribution', () => {
   })
 })
 
+// ── Scheduling constraints ───────────────────────────────────────────────────
+
+describe('generateRotation — pre-goalie rest (hard constraint)', () => {
+  test('the incoming goalie never plays a field shift immediately before their goalie shift', () => {
+    for (const seed of [0, 1, 5, 42, 99]) {
+      const { games } = generateRotation(seed, players)
+      for (let g = 0; g < 4; g++) {
+        const game = games[g]
+        for (let s = 1; s < game.length; s++) {
+          const incomingGoalie = game[s].G
+          if (!incomingGoalie) continue
+          // incomingGoalie must not appear in any field slot of the previous shift
+          const prevShift = game[s - 1]
+          const prevField = [prevShift.D, prevShift.R1, prevShift.R2, prevShift.O].filter(Boolean)
+          expect(prevField).not.toContain(incomingGoalie)
+        }
+      }
+    }
+  })
+})
+
+describe('generateRotation — consecutive field shifts (soft constraint)', () => {
+  test('back-to-back field shifts are uncommon across a full rotation', () => {
+    for (const seed of [0, 1, 5, 42, 99]) {
+      const { games } = generateRotation(seed, players)
+      for (let g = 0; g < 4; g++) {
+        const game = games[g]
+        let consecutive = 0
+        for (const p of players) {
+          for (let s = 1; s < game.length; s++) {
+            const inPrev = [game[s-1].G, game[s-1].D, game[s-1].R1, game[s-1].R2, game[s-1].O].includes(p.name)
+            const inCurr = [game[s].G, game[s].D, game[s].R1, game[s].R2, game[s].O].includes(p.name)
+            if (inPrev && inCurr) consecutive++
+          }
+        }
+        // With 11 players and 5 playing per shift, some overlap is unavoidable,
+        // but the penalty should keep it well under half of all possible transitions.
+        const maxTransitions = players.length * (game.length - 1)
+        expect(consecutive).toBeLessThan(maxTransitions * 0.4)
+      }
+    }
+  })
+})
+
 // ── Edge cases ───────────────────────────────────────────────────────────────
 
 describe('generateRotation — edge cases', () => {
