@@ -532,7 +532,11 @@ export default function SoccerRotation() {
                 <span style={{ fontSize: "13px", fontWeight: 600, width: "80px" }}>{p.name}</span>
                 <div style={{ display: "flex", gap: "3px", flexWrap: "wrap" }}>
                   {ALL_GRADES.map(gr => (
-                    <button key={gr} onClick={() => setPlayers(prev => prev.map(x => x.name === p.name ? { ...x, grade: gr } : x))}
+                    <button key={gr} onClick={() => {
+                      const next = players.map(x => x.name === p.name ? { ...x, grade: gr } : x);
+                      setPlayers(next);
+                      saveNow({ players: next });
+                    }}
                       style={{
                         padding: "3px 5px", borderRadius: "4px", fontSize: "10px", fontWeight: 600, cursor: "pointer",
                         fontFamily: "'DM Mono'", minWidth: "26px",
@@ -544,7 +548,11 @@ export default function SoccerRotation() {
                     </button>
                   ))}
                 </div>
-                <button onClick={() => setPlayers(prev => prev.map(x => x.name === p.name ? { ...x, canGoalie: !x.canGoalie } : x))}
+                <button onClick={() => {
+                  const next = players.map(x => x.name === p.name ? { ...x, canGoalie: !x.canGoalie } : x);
+                  setPlayers(next);
+                  saveNow({ players: next });
+                }}
                   style={{
                     padding: "3px 8px", borderRadius: "4px", fontSize: "10px", fontWeight: 600, cursor: "pointer",
                     fontFamily: "'DM Sans'", marginLeft: "auto",
