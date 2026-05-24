@@ -84,15 +84,28 @@ export default function SoccerRotation() {
   }, []);
 
   useEffect(() => {
-    fetch('/api/state')
-      .then(r => r.json())
-      .then(state => {
+    let cancelled = false;
+    const tryLoad = async () => {
+      try {
+        const res = await fetch('/api/state');
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const state = await res.json();
+        if (cancelled) return;
+        // Don't trust a payload that looks empty/error — refuse to load it
+        // so the debounce save can't overwrite real blob data with our initial state.
+        if (state._error || state._storage === 'blob-error') throw new Error(state._error || 'blob-error');
         applyBlobState(state);
         lastSeenSavedAtRef.current = state._savedAt || 0;
         setSyncInfo({ storage: state._storage || "?", savedAt: state._savedAt || null, fetchedAt: Date.now() });
-      })
-      .catch(() => {})
-      .finally(() => setLoaded(true));
+        setLoaded(true);
+      } catch (e) {
+        if (cancelled) return;
+        setSyncInfo(prev => ({ ...prev, storage: 'load-failed', error: String(e?.message || e), fetchedAt: Date.now() }));
+        setTimeout(tryLoad, 3000); // retry until we get a clean load — never auto-save before then
+      }
+    };
+    tryLoad();
+    return () => { cancelled = true; };
   }, [applyBlobState]);
 
   // lastSeenSavedAtRef: the blob _savedAt we most recently fetched or saved ourselves.
