@@ -831,7 +831,6 @@ export default function SoccerRotation() {
         return (
           <div style={{ display: "flex", gap: "8px", flexWrap: "wrap", alignItems: "center" }}>
             <button onClick={() => setSeed(s => s + 1)} style={S.btn()}>🔄 Regenerate</button>
-            <button onClick={handleSync} style={S.btn("#2563eb")}>📡 Sync</button>
             <button
               onClick={async () => {
                 const payload = { seed, shiftExclusions, shiftForceIns, shiftForcePositions, gameExclusions, lockedShifts, killedShifts, goalieMode, shiftsPerGame, players, timerHalfMin, timerIntervalMin, timerWarnSec, timerHalf, gameResults };
