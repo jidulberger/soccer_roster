@@ -832,6 +832,19 @@ export default function SoccerRotation() {
           <div style={{ display: "flex", gap: "8px", flexWrap: "wrap", alignItems: "center" }}>
             <button onClick={() => setSeed(s => s + 1)} style={S.btn()}>🔄 Regenerate</button>
             <button onClick={handleSync} style={S.btn("#2563eb")}>📡 Sync</button>
+            <button
+              onClick={async () => {
+                const payload = { seed, shiftExclusions, shiftForceIns, shiftForcePositions, gameExclusions, lockedShifts, killedShifts, goalieMode, shiftsPerGame, players, timerHalfMin, timerIntervalMin, timerWarnSec, timerHalf, gameResults };
+                const text = JSON.stringify(payload, null, 2);
+                try {
+                  await navigator.clipboard.writeText(text);
+                  alert("Roster JSON copied to clipboard — paste it somewhere safe.");
+                } catch {
+                  prompt("Copy this JSON manually:", text);
+                }
+              }}
+              style={S.btn("#8b5cf6")}
+            >💾 Export</button>
             <div title={`Backend: ${syncInfo.storage}. Blob version: ${syncInfo.savedAt || "—"}. Fetched: ${syncInfo.fetchedAt ? new Date(syncInfo.fetchedAt).toLocaleTimeString() : "—"}.${syncInfo.error ? ` Error: ${syncInfo.error}` : ""}`}
               style={{ display: "flex", alignItems: "center", gap: "5px", padding: "6px 10px",
                 background: syncFlash ? "#dcfce7" : "#f9fafb",
