@@ -1,6 +1,18 @@
 import { getState, setState } from '@/lib/storage'
 
-const NO_CACHE = { 'Cache-Control': 'no-store' }
+// Force the route handler to be dynamic (not cached) on Vercel.
+// Without this, Next.js 14 App Router may cache GET responses at build/edge.
+export const dynamic = 'force-dynamic'
+export const revalidate = 0
+export const fetchCache = 'force-no-store'
+export const runtime = 'nodejs'
+
+const NO_CACHE = {
+  'Cache-Control': 'no-store, no-cache, must-revalidate, max-age=0',
+  'CDN-Cache-Control': 'no-store',
+  'Vercel-CDN-Cache-Control': 'no-store',
+  'Pragma': 'no-cache',
+}
 
 export async function GET() {
   const state = await getState()
